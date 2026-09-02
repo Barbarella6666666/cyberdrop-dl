@@ -119,6 +119,16 @@ class BlueskyCrawler(Crawler):
                 scrape_item.add_children()
                 continue
 
+            if fullsize := media.get("fullsize"):
+                image_url = self.parse_url(fullsize, trim=False)
+                cid = image_url.name
+                ext = ".jpg"
+                self.create_eager_task(
+                    self.handle_file(image_url, scrape_item, cid + ext, ext, custom_filename=cid + ext)
+                )
+                scrape_item.add_children()
+                continue
+
             did = author["did"]
             cid = media["ref"]["$link"] if "ref" in media else media["cid"]
             ext = "." + media["mimeType"].partition("/")[2]
@@ -147,7 +157,7 @@ class BlueskyCrawler(Crawler):
         if "playlist" in media:
             return [media]
 
-        files = [image["image"] for image in media.get("images", ())]
+        files = [image.get("image", image) for image in media.get("images", ())]
         if video := media.get("video"):
             files.append(video)
         return files
