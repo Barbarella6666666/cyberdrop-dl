@@ -63,7 +63,7 @@ type SupportedPaths = dict[str, OneOrTuple[str]]
 type SupportedDomains = OneOrTuple[str]
 type DebridURL = Callable[[], Awaitable[AbsoluteHttpURL]] | AbsoluteHttpURL | None
 
-_ORIGIN: ContextVar[AbsoluteHttpURL] = ContextVar("ORIGIN")
+ORIGIN: ContextVar[AbsoluteHttpURL] = ContextVar("ORIGIN")
 _CHECK_DL_CAPACITY: ContextVar[bool] = ContextVar("_CHECK_DL_CAPACITY")
 _HASH_PREFIXES = "md5:", "sha1:", "sha256:", "xxh128:"
 
@@ -416,7 +416,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     @final
     @property
     def origin(self) -> AbsoluteHttpURL:
-        return _ORIGIN.get()
+        return ORIGIN.get()
 
     @property
     def separate_posts(self) -> bool:
@@ -485,7 +485,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     def new_task_id(self, url: AbsoluteHttpURL):
         """Creates a new task_id (shows the URL in the UI and logs)"""
         self.log.info(f"Scraping {url}")
-        _ = _ORIGIN.set(url.origin())
+        _ = ORIGIN.set(url.origin())
         return self.tui.scrape.new(url)
 
     @final
@@ -1084,7 +1084,7 @@ class API(HTTPMixin, ABC):
     @final
     @property
     def origin(self) -> AbsoluteHttpURL:
-        return _ORIGIN.get()
+        return ORIGIN.get()
 
 
 def _make_scrape_mapper_keys(cls: type[Crawler] | Crawler) -> tuple[str, ...]:
