@@ -32,6 +32,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, ClassVar
 
 from cyberdrop_dl import aio
@@ -51,11 +52,7 @@ if TYPE_CHECKING:
 _KNOWN_FILE_ID_VERSIONS = 0, 1
 _DRIVE_ID_LEN = 28  # v0 uses 28, v1 uses 33
 _DOCS_ID_LEN = 44  # v1 uses 44. I have not seen v0 doc URL
-
-
 _DOCS_URL = AbsoluteHttpURL("https://docs.google.com")
-
-_FOLDER_ITEM_SELECTOR = "div.flip-entry-info > a[href]"
 _DOC_FORMATS: dict[str, tuple[str, ...]] = {
     "spreadsheets": ("xslx", "ods", "html", "csv", "tsv"),
     "presentation": ("pptx", "odp"),
@@ -75,10 +72,14 @@ def _valid_formats_string() -> str:
 
 class GoogleDriveCrawler(Crawler):
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = {
-        "Files": "/file/d/<file_id>",
+        "Files": (
+            "/file/d/<file_id>",
+            "/download?id=<file_id>",
+        ),
         "Folders": (
             "/drive/folders/<folder_id>",
             "/embeddedfolderview/<folder_id>",
+            "/embeddedfolderview?id=<folder_id>",
         ),
         "Docs": "/document/d/<file_id>",
         "Sheets": "/spreadsheets/d/<file_id>",
@@ -96,24 +97,26 @@ class GoogleDriveCrawler(Crawler):
 
     async def fetch(self, scrape_item: ScrapeItem) -> None:
         url = scrape_item.url
-        if file_id := url.query.get("id"):
-            return await self.file(scrape_item, file_id)
 
         def next_to(name: str) -> str | None:
-            try:
-                index = url.parts.index(name)
-                return url.parts[index + 1]
-            except (ValueError, IndexError):
-                return None
+            with contextlib.suppress(ValueError, IndexError):
+                return url.parts[url.parts.index(name) + 1]
 
-        if folder_id := (next_to("folders") or next_to("embeddedfolderview")):
-            return await self.folder(scrape_item, folder_id)
+        if query_id := url.query.get("id"):
+            if "embeddedfolderview" in url.parts:
+                await self.folder(scrape_item, query_id)
+            else:
+                await self.file(scrape_item, query_id)
 
-        if file_id := next_to("d"):
+        elif folder_id := (next_to("folders") or next_to("embeddedfolderview")):
+            await self.folder(scrape_item, folder_id)
+
+        elif file_id := next_to("d"):
             doc = first if (first := url.parts[1]) in _DOC_FORMATS else None
-            return await self.file(scrape_item, file_id, doc)
+            await self.file(scrape_item, file_id, doc)
 
-        raise ValueError
+        else:
+            raise ValueError
 
     @error_handling_wrapper
     async def folder(self, scrape_item: ScrapeItem, folder_id: str) -> None:
@@ -125,7 +128,7 @@ class GoogleDriveCrawler(Crawler):
         scrape_item.setup_as_album(title, album_id=folder_id)
 
         sleep = aio.periodic_sleep(100)
-        for child in self.iter_urls(soup, _FOLDER_ITEM_SELECTOR):
+        for child in self.iter_urls(soup, "div.flip-entry-info > a[href]"):
             new_scrape_item = scrape_item.create_child(child)
             self.create_task(self.run(new_scrape_item))
             scrape_item.add_children()
