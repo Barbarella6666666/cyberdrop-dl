@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from cyberdrop_dl.crawlers.crawler import API
+from cyberdrop_dl.url_objects import AbsoluteHttpURL
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Iterable
+
+
+class BlueskyAPI(API):
+    ENTRYPOINT: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://api.bsky.app/xrpc")
+
+    async def resolve_handle(self, actor: str) -> str:
+        if actor.startswith("did:"):
+            return actor
+        url = (self.ENTRYPOINT / "com.atproto.identity.resolveHandle").with_query(handle=actor)
+        response: dict[str, str] = await self.request_json(url)
+        return response["did"]
+
+    async def profile(self, actor: str) -> dict[str, Any]:
+        actor_did = await self.resolve_handle(actor)
+        url = (self.ENTRYPOINT / "app.bsky.actor.getProfile").with_query(actor=actor_did)
+        return await self.request_json(url)
+
+    async def post_thread(self, actor: str, post_id: str) -> list[dict[str, Any]]:
+        actor_did = await self.resolve_handle(actor)
+        uri = f"at://{actor_did}/app.bsky.feed.post/{post_id}"
+        url = (self.ENTRYPOINT / "app.bsky.feed.getPostThread").with_query(uri=uri, depth=100, parentHeight=0)
+        response: dict[str, Any] = await self.request_json(url)
+        posts: list[dict[str, Any]] = []
+        pending = [response["thread"]]
+        while pending:
+            post = pending.pop(0)
+            if post.get("$type") == "app.bsky.feed.defs#threadViewPost":
+                posts.append(post["post"])
+                pending.extend(post.get("replies", ()))
+        return posts
+
+    def author_feed(
+        self, actor: str, feed_filter: str = "posts_with_media"
+    ) -> AsyncGenerator[Iterable[dict[str, Any]]]:
+        return self._paginate(
+            "app.bsky.feed.getAuthorFeed",
+            {"actor": actor, "filter": feed_filter, "limit": 100},
+        )
+
+    def search(self, query: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
+        return self._paginate("app.bsky.feed.searchPosts", {"q": query, "limit": 100})
+
+    def feed(self, actor: str, feed_id: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
+        return self._paginate(
+            "app.bsky.feed.getFeed",
+            {"feed": f"at://{actor}/app.bsky.feed.generator/{feed_id}", "limit": 100},
+            actor=actor,
+        )
+
+    def list_feed(self, actor: str, list_id: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
+        return self._paginate(
+            "app.bsky.feed.getListFeed",
+            {"list": f"at://{actor}/app.bsky.graph.list/{list_id}", "limit": 100},
+            actor=actor,
+        )
+
+    def likes(self, actor: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
+        return self._paginate("app.bsky.feed.getActorLikes", {"actor": actor, "limit": 100}, key="feed")
+
+    async def _paginate(
+        self, endpoint: str, params: dict[str, Any], *, actor: str | None = None, key: str = "feed"
+    ) -> AsyncGenerator[Iterable[dict[str, Any]]]:
+        if actor:
+            actor_did = await self.resolve_handle(actor)
+            params = {
+                name: value.replace(actor, actor_did) if isinstance(value, str) else value
+                for name, value in params.items()
+            }
+        elif "actor" in params:
+            params["actor"] = await self.resolve_handle(params["actor"])
+
+        while True:
+            url = (self.ENTRYPOINT / endpoint).with_query(params)
+            response: dict[str, Any] = await self.request_json(url)
+            yield response.get(key, response.get("posts", ()))
+            cursor = response.get("cursor")
+            if not cursor:
+                return
+            params["cursor"] = cursor
