@@ -42,6 +42,7 @@ from cyberdrop_dl.utils import css
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
 if TYPE_CHECKING:
+    from cyberdrop_dl.config.crawlers import GoogleDriveConfig
     from cyberdrop_dl.url_objects import ScrapeItem
 
 
@@ -52,7 +53,6 @@ _DRIVE_ID_LEN = 28  # v0 uses 28, v1 uses 33
 _DOCS_ID_LEN = 44  # v1 uses 44. I have not seen v0 doc URL
 
 
-_PRIMARY_URL = AbsoluteHttpURL("https://drive.google.com")
 _DOCS_URL = AbsoluteHttpURL("https://docs.google.com")
 
 _FOLDER_ITEM_SELECTOR = "div.flip-entry-info > a[href]"
@@ -90,7 +90,7 @@ class GoogleDriveCrawler(Crawler):
         ),
     }
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = "drive.google", "docs.google", "drive.usercontent.google.com"
-    PRIMARY_URL: ClassVar[AbsoluteHttpURL] = _PRIMARY_URL
+    PRIMARY_URL: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://drive.google.com")
     DOMAIN: ClassVar[str] = "drive.google"
     FOLDER_DOMAIN: ClassVar[str] = "GoogleDrive"
 
@@ -150,8 +150,8 @@ class GoogleDriveCrawler(Crawler):
         return await self._docs_file(scrape_item, file_id, doc)
 
     async def _drive_file(self, scrape_item: ScrapeItem, file_id: str) -> None:
-        scrape_item.url = _PRIMARY_URL / "file/d" / file_id
-        export_url = (_PRIMARY_URL / "uc").with_query(id=file_id, export="download", confirm="True")
+        scrape_item.url = self.PRIMARY_URL / "file/d" / file_id
+        export_url = (self.PRIMARY_URL / "uc").with_query(id=file_id, export="download", confirm="True")
         return await self._file(scrape_item, export_url)
 
     @error_handling_wrapper
@@ -165,10 +165,10 @@ class GoogleDriveCrawler(Crawler):
         if not doc:
             raise ScrapeError(422, "Unable to identify google docs file type")
 
-        format_ = scrape_item.url.query.get("format")
-        proper_format = _get_proper_doc_format(doc, format_)
-        if format_ and format_ != proper_format:
-            msg = f"{scrape_item.url} with {format_ = } is not valid. Falling back to {proper_format}"
+        q_format = scrape_item.url.query.get("format")
+        proper_format = _get_proper_doc_format(doc, q_format, self.config.crawlers.google_drive)
+        if q_format and q_format != proper_format:
+            msg = f"{scrape_item.url} with {q_format = } is not valid. Falling back to {proper_format}"
             self.log.warning(msg)
 
         scrape_item.url = (_DOCS_URL / doc / "d" / file_id).with_query(format=proper_format)
@@ -195,6 +195,18 @@ class GoogleDriveCrawler(Crawler):
         return resp.url, resp.content_disposition.filename
 
 
-def _get_proper_doc_format(doc: str, fmt: str | None) -> str:
-    valid_formats = _DOC_FORMATS[doc]
-    return fmt if fmt in valid_formats else valid_formats[0]
+def _get_proper_doc_format(doc: str, query_format: str | None, config: GoogleDriveConfig) -> str:
+    if query_format:
+        valid_formats = _DOC_FORMATS[doc]
+        if query_format in valid_formats:
+            return query_format
+
+    match doc:
+        case "spreadsheets":
+            return config.default_formats.sheets
+        case "presentation":
+            return config.default_formats.slides
+        case "document":
+            return config.default_formats.docs
+        case _:
+            raise ValueError(doc)

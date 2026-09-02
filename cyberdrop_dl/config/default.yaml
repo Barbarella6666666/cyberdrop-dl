@@ -39,6 +39,11 @@ crawlers:
     video: []
     wordpress_html: []
     wordpress_media: []
+  google_drive:
+    default_formats:
+      docs: docx
+      sheets: xslx
+      slides: pptx
   octave_music:
     filename_format: '{artist} - {title}{ext}'
     quality: mp3-320
