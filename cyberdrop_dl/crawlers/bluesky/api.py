@@ -5,6 +5,10 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from cyberdrop_dl.crawlers.crawler import API
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 
+_PAGE_SIZE = 100
+_THREAD_DEPTH = 100
+_PARENT_HEIGHT = 0
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
 
@@ -27,7 +31,9 @@ class BlueskyAPI(API):
     async def post_thread(self, actor: str, post_id: str) -> list[dict[str, Any]]:
         actor_did = await self.resolve_handle(actor)
         uri = f"at://{actor_did}/app.bsky.feed.post/{post_id}"
-        url = (self.ENTRYPOINT / "app.bsky.feed.getPostThread").with_query(uri=uri, depth=100, parentHeight=0)
+        url = (self.ENTRYPOINT / "app.bsky.feed.getPostThread").with_query(
+            uri=uri, depth=_THREAD_DEPTH, parentHeight=_PARENT_HEIGHT
+        )
         response: dict[str, Any] = await self.request_json(url)
         posts: list[dict[str, Any]] = []
         pending = [response["thread"]]
@@ -43,11 +49,11 @@ class BlueskyAPI(API):
     ) -> AsyncGenerator[Iterable[dict[str, Any]]]:
         return self._paginate(
             "app.bsky.feed.getAuthorFeed",
-            {"actor": actor, "filter": feed_filter, "limit": 100},
+            {"actor": actor, "filter": feed_filter, "limit": _PAGE_SIZE},
         )
 
     def search(self, query: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
-        return self._paginate("app.bsky.feed.searchPosts", {"q": query, "limit": 100})
+        return self._paginate("app.bsky.feed.searchPosts", {"q": query, "limit": _PAGE_SIZE})
 
     async def _paginate(
         self, endpoint: str, params: dict[str, Any], *, key: str = "feed"
