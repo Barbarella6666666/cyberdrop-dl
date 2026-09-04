@@ -121,12 +121,20 @@ class BlueskyCrawler(Crawler):
         scrape_item.append_folders(self.create_separate_post_title(None, post_id, date))
         self.create_eager_task(self.write_metadata(scrape_item, f"post {post_id}", post))
 
-        record_images = record.get("embed", {}).get("images", ())
-        image_index = 0
-        for media in self._media(post.get("embed", {})):
+        embed = post.get("embed", {})
+        self._extract_videos(scrape_item, embed, post_id)
+        self._extract_images(scrape_item, embed, record.get("embed", {}).get("images", ()), author["did"])
+
+    def _extract_videos(self, scrape_item: ScrapeItem, embed: dict[str, Any], post_id: str) -> None:
+        for media in self._media(embed):
             if playlist := media.get("playlist"):
                 self.create_eager_task(self._video(scrape_item, playlist, post_id, media))
                 scrape_item.add_children()
+
+    def _extract_images(self, scrape_item: ScrapeItem, embed: dict[str, Any], record_images: Any, did: str) -> None:
+        image_index = 0
+        for media in self._media(embed):
+            if "playlist" in media:
                 continue
 
             if fullsize := media.get("fullsize"):
@@ -136,14 +144,16 @@ class BlueskyCrawler(Crawler):
                 cid = blob.get("ref", {}).get("$link") or self.parse_url(fullsize, trim=False).name
                 mime_type = blob.get("mimeType")
                 ext = _IMAGE_EXTENSIONS.get(mime_type, ".jpg")
-                image_url = self._blob_url(author["did"], cid)
+                image_url = self._blob_url(did, cid)
                 self.create_eager_task(
                     self.handle_file(image_url, scrape_item, cid + ext, ext, custom_filename=cid + ext)
                 )
                 scrape_item.add_children()
                 continue
 
-            did = author["did"]
+            if "mimeType" not in media:
+                continue
+
             cid = media["ref"]["$link"] if "ref" in media else media["cid"]
             ext = "." + media["mimeType"].partition("/")[2]
             url = self._blob_url(did, cid)
@@ -153,8 +163,13 @@ class BlueskyCrawler(Crawler):
     async def _video(self, scrape_item: ScrapeItem, playlist: str, post_id: str, media: dict[str, Any]) -> None:
         playlist_url = self.parse_url(playlist, trim=False)
         with self.catch_errors(playlist_url):
-            manifest, _info = await self.request_m3u8(playlist_url)
-            resolution = Resolution(media["aspectRatio"]["width"], media["aspectRatio"]["height"])
+            manifest, info = await self.request_m3u8(playlist_url)
+            aspect_ratio = media.get("aspectRatio", {})
+            resolution = (
+                info.resolution
+                if info
+                else Resolution.parse(aspect_ratio.get("height") if aspect_ratio.get("width") else None)
+            )
             filename = self.create_custom_filename(post_id, ".mp4", resolution=resolution)
             await self.handle_file(
                 playlist_url,

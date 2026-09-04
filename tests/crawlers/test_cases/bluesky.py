@@ -4,6 +4,9 @@ TEST_CASES = [
         "url": "https://bsky.app/profile/snarkysillysad.bsky.social/post/3muosmesdwc2k",
         "results": [
             {
+                "url": "https://bsky.social/xrpc/com.atproto.sync.getBlob?did=did:plc:sg6jg3i3m4hlkw3fqk6hw7sq&cid=bafkreibo7jass3v3tkya5o6vggctmf6y2jnrf3e6ozmwn6sabmrlcgsiny",
+            },
+            {
                 "url": "https://video.bsky.app/watch/did%3Aplc%3Asg6jg3i3m4hlkw3fqk6hw7sq/bafkreif7r6ewuwlzzcqkwniy6h247ljmfscqkdidkebo56fb4mii76iloa/playlist.m3u8",
                 "filename": "3muosmesdwc2k [1280p].mp4",
                 "debrid_url": None,
