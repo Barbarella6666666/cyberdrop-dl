@@ -119,9 +119,7 @@ class BlueskyCrawler(Crawler):
         _, ext = self.get_filename_and_ext(cid, mime_type=blob.get("mimeType"))
         return source_url, cid, ext, self.api.blob_url(did, cid)
 
-    def _prepare_blob_image(
-        self, media: dict[str, Any], did: str
-    ) -> tuple[AbsoluteHttpURL, str, str, None]:
+    def _prepare_blob_image(self, media: dict[str, Any], did: str) -> tuple[AbsoluteHttpURL, str, str, None]:
         cid = media["ref"]["$link"] if "ref" in media else media["cid"]
         ext = "." + media["mimeType"].partition("/")[2]
         return self.api.blob_url(did, cid), cid, ext, None
