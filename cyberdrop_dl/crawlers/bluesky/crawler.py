@@ -11,6 +11,14 @@ from cyberdrop_dl.utils.errors import error_handling_wrapper
 if TYPE_CHECKING:
     from cyberdrop_dl.url_objects import ScrapeItem
 
+_IMAGE_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/avif": ".avif",
+}
+
 
 class BlueskyCrawler(Crawler):
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = ("bsky.app", "bsky.social", "main.bsky.dev")
@@ -113,6 +121,8 @@ class BlueskyCrawler(Crawler):
         scrape_item.append_folders(self.create_separate_post_title(None, post_id, date))
         self.create_eager_task(self.write_metadata(scrape_item, f"post {post_id}", post))
 
+        record_images = record.get("embed", {}).get("images", ())
+        image_index = 0
         for media in self._media(post.get("embed", {})):
             if playlist := media.get("playlist"):
                 self.create_eager_task(self._video(scrape_item, playlist, post_id, media))
@@ -120,9 +130,13 @@ class BlueskyCrawler(Crawler):
                 continue
 
             if fullsize := media.get("fullsize"):
-                image_url = self.parse_url(fullsize, trim=False)
-                cid = image_url.name
-                ext = ".jpg"
+                image = record_images[image_index] if image_index < len(record_images) else {}
+                image_index += 1
+                blob = image.get("image", {})
+                cid = blob.get("ref", {}).get("$link") or self.parse_url(fullsize, trim=False).name
+                mime_type = blob.get("mimeType")
+                ext = _IMAGE_EXTENSIONS.get(mime_type, ".jpg")
+                image_url = self._blob_url(author["did"], cid)
                 self.create_eager_task(
                     self.handle_file(image_url, scrape_item, cid + ext, ext, custom_filename=cid + ext)
                 )
@@ -132,7 +146,7 @@ class BlueskyCrawler(Crawler):
             did = author["did"]
             cid = media["ref"]["$link"] if "ref" in media else media["cid"]
             ext = "." + media["mimeType"].partition("/")[2]
-            url = AbsoluteHttpURL("https://bsky.social/xrpc/com.atproto.sync.getBlob").with_query(did=did, cid=cid)
+            url = self._blob_url(did, cid)
             self.create_eager_task(self.handle_file(url, scrape_item, cid + ext, ext, custom_filename=cid + ext))
             scrape_item.add_children()
 
@@ -166,3 +180,7 @@ class BlueskyCrawler(Crawler):
         author = post["author"]["handle"]
         post_id = post["uri"].rpartition("/")[2]
         return f"{self.PRIMARY_URL}/profile/{author}/post/{post_id}"
+
+    @staticmethod
+    def _blob_url(did: str, cid: str) -> AbsoluteHttpURL:
+        return AbsoluteHttpURL("https://bsky.social/xrpc/com.atproto.sync.getBlob").with_query(did=did, cid=cid)

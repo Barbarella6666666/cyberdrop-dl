@@ -19,7 +19,7 @@ TEST_CASES = [
         "url": "https://bsky.app/profile/pmamtraveller.bsky.social/post/3muolshmb2c2g",
         "results": [
             {
-                "url": "https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vt67jrpurra7lod3gj44snaw/bafkreicriek7hgvmo6zvf44gkhzbycnhrmjix33k5kdtg52kippvktfqyu",
+                "url": "https://bsky.social/xrpc/com.atproto.sync.getBlob?did=did:plc:vt67jrpurra7lod3gj44snaw&cid=bafkreicriek7hgvmo6zvf44gkhzbycnhrmjix33k5kdtg52kippvktfqyu",
                 "filename": "bafkreicriek7hgvmo6zvf44gkhzbycnhrmjix33k5kdtg52kippvktfqyu.jpg",
                 "debrid_url": None,
                 "original_filename": "bafkreicriek7hgvmo6zvf44gkhzbycnhrmjix33k5kdtg52kippvktfqyu.jpg",
