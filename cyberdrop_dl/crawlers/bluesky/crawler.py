@@ -86,28 +86,45 @@ class BlueskyCrawler(Crawler):
         for media in self._media(embed):
             if "playlist" in media:
                 continue
+            record_image = record_images[image_index] if image_index < len(record_images) else {}
+            self._extract_image(scrape_item, media, record_image, did)
+            image_index += 1
 
-            if fullsize := media.get("fullsize"):
-                image = record_images[image_index] if image_index < len(record_images) else {}
-                image_index += 1
-                blob = image.get("image", {})
-                cid = blob.get("ref", {}).get("$link") or self.parse_url(fullsize, trim=False).name
-                _, ext = self.get_filename_and_ext(cid, mime_type=blob.get("mimeType"))
-                image_url = self.api.blob_url(did, cid)
-                self.create_eager_task(
-                    self.handle_file(image_url, scrape_item, cid + ext, ext, custom_filename=cid + ext)
-                )
-                scrape_item.add_children()
-                continue
+    def _extract_image(
+        self, scrape_item: ScrapeItem, media: dict[str, Any], record_image: dict[str, Any], did: str
+    ) -> None:
+        if fullsize := media.get("fullsize"):
+            source_url, cid, ext, debrid_link = self._prepare_fullsize_image(fullsize, record_image, did)
+        else:
+            source_url, cid, ext, debrid_link = self._prepare_blob_image(media, did)
 
-            if "mimeType" not in media:
-                continue
+        self.create_eager_task(
+            self.handle_file(
+                source_url,
+                scrape_item,
+                cid + ext,
+                ext,
+                custom_filename=cid + ext,
+                debrid_link=debrid_link,
+            )
+        )
+        scrape_item.add_children()
 
-            cid = media["ref"]["$link"] if "ref" in media else media["cid"]
-            ext = "." + media["mimeType"].partition("/")[2]
-            url = self.api.blob_url(did, cid)
-            self.create_eager_task(self.handle_file(url, scrape_item, cid + ext, ext, custom_filename=cid + ext))
-            scrape_item.add_children()
+    def _prepare_fullsize_image(
+        self, fullsize: str, record_image: dict[str, Any], did: str
+    ) -> tuple[AbsoluteHttpURL, str, str, AbsoluteHttpURL]:
+        blob = record_image.get("image", {})
+        source_url = self.parse_url(fullsize, trim=False)
+        cid = blob.get("ref", {}).get("$link") or source_url.name
+        _, ext = self.get_filename_and_ext(cid, mime_type=blob.get("mimeType"))
+        return source_url, cid, ext, self.api.blob_url(did, cid)
+
+    def _prepare_blob_image(
+        self, media: dict[str, Any], did: str
+    ) -> tuple[AbsoluteHttpURL, str, str, None]:
+        cid = media["ref"]["$link"] if "ref" in media else media["cid"]
+        ext = "." + media["mimeType"].partition("/")[2]
+        return self.api.blob_url(did, cid), cid, ext, None
 
     async def _video(self, scrape_item: ScrapeItem, playlist: str, post_id: str, media: dict[str, Any]) -> None:
         playlist_url = self.parse_url(playlist, trim=False)
