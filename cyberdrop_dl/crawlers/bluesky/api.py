@@ -52,9 +52,6 @@ class BlueskyAPI(API):
             {"actor": actor, "filter": feed_filter, "limit": _PAGE_SIZE},
         )
 
-    def search(self, query: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
-        return self._paginate("app.bsky.feed.searchPosts", {"q": query, "limit": _PAGE_SIZE})
-
     async def _paginate(
         self, endpoint: str, params: dict[str, Any], *, key: str = "feed"
     ) -> AsyncGenerator[Iterable[dict[str, Any]]]:

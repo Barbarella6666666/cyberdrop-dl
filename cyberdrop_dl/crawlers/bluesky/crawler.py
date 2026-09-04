@@ -19,8 +19,6 @@ class BlueskyCrawler(Crawler):
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = {
         "Post": "/profile/<handle>/post/<post_id>",
         "Profile": "/profile/<handle>",
-        "Hashtag": "/hashtag/<tag>",
-        "Search": "/search?q=<query>",
     }
     PRIMARY_URL: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://bsky.app")
     DOMAIN: ClassVar[str] = "bluesky"
@@ -35,15 +33,10 @@ class BlueskyCrawler(Crawler):
 
     async def fetch(self, scrape_item: ScrapeItem) -> None:
         parts = scrape_item.url.parts[1:]
-        query = scrape_item.url.query.get("q")
         if len(parts) >= 4 and parts[0] == "profile" and parts[2] == "post":
             await self.post(scrape_item, parts[1], parts[3])
         elif len(parts) == 2 and parts[0] == "profile":
             await self.user(scrape_item, parts[1], "posts_and_author_threads")
-        elif len(parts) == 2 and parts[0] == "hashtag":
-            await self.search(scrape_item, f"#{parts[1]}")
-        elif parts == ("search",) and query:
-            await self.search(scrape_item, query)
         else:
             raise ValueError
 
@@ -63,16 +56,6 @@ class BlueskyCrawler(Crawler):
     async def user(self, scrape_item: ScrapeItem, actor: str, feed_filter: str) -> None:
         scrape_item.setup_as_profile("")
         async for page in self.api.author_feed(actor, feed_filter):
-            for entry in page:
-                post = entry.get("post", entry)
-                new_item = scrape_item.create_child(self.parse_url(self._post_url(post)))
-                self._post(new_item, post)
-                scrape_item.add_children()
-
-    @error_handling_wrapper
-    async def search(self, scrape_item: ScrapeItem, query: str) -> None:
-        scrape_item.setup_as_forum("")
-        async for page in self.api.search(query):
             for entry in page:
                 post = entry.get("post", entry)
                 new_item = scrape_item.create_child(self.parse_url(self._post_url(post)))
