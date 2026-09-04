@@ -24,12 +24,7 @@ class BlueskyCrawler(Crawler):
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = ("bsky.app", "bsky.social", "main.bsky.dev")
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = {
         "Post": "/profile/<handle>/post/<post_id>",
-        "User posts": "/profile/<handle>",
-        "User media": "/profile/<handle>/media",
-        "User replies": "/profile/<handle>/replies",
-        "User videos": "/profile/<handle>/video",
-        "Feed": "/profile/<handle>/feed/<feed_id>",
-        "List": "/profile/<handle>/lists/<list_id>",
+        "Profile": "/profile/<handle>",
         "Hashtag": "/hashtag/<tag>",
         "Search": "/search?q=<query>",
     }
@@ -51,16 +46,6 @@ class BlueskyCrawler(Crawler):
             await self.post(scrape_item, parts[1], parts[3])
         elif len(parts) == 2 and parts[0] == "profile":
             await self.user(scrape_item, parts[1], "posts_and_author_threads")
-        elif len(parts) == 3 and parts[0] == "profile" and parts[2] in {"media", "replies", "video", "likes"}:
-            feed_filter = {
-                "media": "posts_with_media",
-                "replies": "posts_with_replies",
-                "video": "posts_with_video",
-                "likes": "posts_with_media",
-            }[parts[2]]
-            await self.user(scrape_item, parts[1], feed_filter, likes=parts[2] == "likes")
-        elif len(parts) == 4 and parts[0] == "profile" and parts[2] in {"feed", "lists"}:
-            await self.custom_feed(scrape_item, parts[1], parts[3], is_feed=parts[2] == "feed")
         elif len(parts) == 2 and parts[0] == "hashtag":
             await self.search(scrape_item, f"#{parts[1]}")
         elif parts == ("search",) and query:
@@ -84,17 +69,6 @@ class BlueskyCrawler(Crawler):
     async def user(self, scrape_item: ScrapeItem, actor: str, feed_filter: str, *, likes: bool = False) -> None:
         scrape_item.setup_as_profile("")
         pages = self.api.likes(actor) if likes else self.api.author_feed(actor, feed_filter)
-        async for page in pages:
-            for entry in page:
-                post = entry.get("post", entry)
-                new_item = scrape_item.create_child(self.parse_url(self._post_url(post)))
-                self._post(new_item, post)
-                scrape_item.add_children()
-
-    @error_handling_wrapper
-    async def custom_feed(self, scrape_item: ScrapeItem, actor: str, feed_id: str, *, is_feed: bool) -> None:
-        scrape_item.setup_as_forum("")
-        pages = self.api.feed(actor, feed_id) if is_feed else self.api.list_feed(actor, feed_id)
         async for page in pages:
             for entry in page:
                 post = entry.get("post", entry)

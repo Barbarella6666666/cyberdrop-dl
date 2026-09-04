@@ -49,33 +49,10 @@ class BlueskyAPI(API):
     def search(self, query: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
         return self._paginate("app.bsky.feed.searchPosts", {"q": query, "limit": 100})
 
-    def feed(self, actor: str, feed_id: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
-        return self._paginate(
-            "app.bsky.feed.getFeed",
-            {"feed": f"at://{actor}/app.bsky.feed.generator/{feed_id}", "limit": 100},
-            actor=actor,
-        )
-
-    def list_feed(self, actor: str, list_id: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
-        return self._paginate(
-            "app.bsky.feed.getListFeed",
-            {"list": f"at://{actor}/app.bsky.graph.list/{list_id}", "limit": 100},
-            actor=actor,
-        )
-
-    def likes(self, actor: str) -> AsyncGenerator[Iterable[dict[str, Any]]]:
-        return self._paginate("app.bsky.feed.getActorLikes", {"actor": actor, "limit": 100}, key="feed")
-
     async def _paginate(
-        self, endpoint: str, params: dict[str, Any], *, actor: str | None = None, key: str = "feed"
+        self, endpoint: str, params: dict[str, Any], *, key: str = "feed"
     ) -> AsyncGenerator[Iterable[dict[str, Any]]]:
-        if actor:
-            actor_did = await self.resolve_handle(actor)
-            params = {
-                name: value.replace(actor, actor_did) if isinstance(value, str) else value
-                for name, value in params.items()
-            }
-        elif "actor" in params:
+        if "actor" in params:
             params["actor"] = await self.resolve_handle(params["actor"])
 
         while True:
