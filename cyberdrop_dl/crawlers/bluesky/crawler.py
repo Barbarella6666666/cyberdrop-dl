@@ -71,7 +71,9 @@ class BlueskyCrawler(Crawler):
 
         embed = post.get("embed", {})
         self._extract_videos(scrape_item, embed, post_id)
-        self._extract_images(scrape_item, embed, record.get("embed", {}).get("images", ()), author["did"])
+        record_embed = record.get("embed", {})
+        record_images = record_embed.get("images", record_embed.get("media", {}).get("images", ()))
+        self._extract_images(scrape_item, embed, record_images, author["did"])
 
     def _extract_videos(self, scrape_item: ScrapeItem, embed: dict[str, Any], post_id: str) -> None:
         for media in self._media(embed):
