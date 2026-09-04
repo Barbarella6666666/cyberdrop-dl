@@ -8,6 +8,7 @@ from cyberdrop_dl.url_objects import AbsoluteHttpURL
 _PAGE_SIZE = 100
 _THREAD_DEPTH = 100
 _PARENT_HEIGHT = 0
+_BLOB_ENDPOINT = AbsoluteHttpURL("https://bsky.social/xrpc/com.atproto.sync.getBlob")
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -15,6 +16,11 @@ if TYPE_CHECKING:
 
 class BlueskyAPI(API):
     ENTRYPOINT: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://api.bsky.app/xrpc")
+
+    @staticmethod
+    def blob_url(did: str, cid: str) -> AbsoluteHttpURL:
+        params: dict[str, Any] = {"did": did, "cid": cid}
+        return _BLOB_ENDPOINT.with_query(params)
 
     async def resolve_handle(self, actor: str) -> str:
         if actor.startswith("did:"):

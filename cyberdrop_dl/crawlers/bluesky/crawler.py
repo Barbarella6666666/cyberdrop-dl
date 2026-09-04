@@ -11,8 +11,6 @@ from cyberdrop_dl.utils.errors import error_handling_wrapper
 if TYPE_CHECKING:
     from cyberdrop_dl.url_objects import ScrapeItem
 
-_BLOB_ENDPOINT = AbsoluteHttpURL("https://bsky.social/xrpc/com.atproto.sync.getBlob")
-
 
 class BlueskyCrawler(Crawler):
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = ("bsky.app", "bsky.social", "main.bsky.dev")
@@ -93,7 +91,7 @@ class BlueskyCrawler(Crawler):
                 blob = image.get("image", {})
                 cid = blob.get("ref", {}).get("$link") or self.parse_url(fullsize, trim=False).name
                 _, ext = self.get_filename_and_ext(cid, mime_type=blob.get("mimeType"))
-                image_url = self._blob_url(did, cid)
+                image_url = self.api.blob_url(did, cid)
                 self.create_eager_task(
                     self.handle_file(image_url, scrape_item, cid + ext, ext, custom_filename=cid + ext)
                 )
@@ -105,7 +103,7 @@ class BlueskyCrawler(Crawler):
 
             cid = media["ref"]["$link"] if "ref" in media else media["cid"]
             ext = "." + media["mimeType"].partition("/")[2]
-            url = self._blob_url(did, cid)
+            url = self.api.blob_url(did, cid)
             self.create_eager_task(self.handle_file(url, scrape_item, cid + ext, ext, custom_filename=cid + ext))
             scrape_item.add_children()
 
@@ -144,7 +142,3 @@ class BlueskyCrawler(Crawler):
         author = post["author"]["handle"]
         post_id = post["uri"].rpartition("/")[2]
         return f"{self.PRIMARY_URL}/profile/{author}/post/{post_id}"
-
-    @staticmethod
-    def _blob_url(did: str, cid: str) -> AbsoluteHttpURL:
-        return _BLOB_ENDPOINT.with_query(did=did, cid=cid)
