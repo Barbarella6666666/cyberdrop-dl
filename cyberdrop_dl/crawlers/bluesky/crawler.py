@@ -11,13 +11,7 @@ from cyberdrop_dl.utils.errors import error_handling_wrapper
 if TYPE_CHECKING:
     from cyberdrop_dl.url_objects import ScrapeItem
 
-_IMAGE_EXTENSIONS = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "image/avif": ".avif",
-}
+_BLOB_ENDPOINT = AbsoluteHttpURL("https://bsky.social/xrpc/com.atproto.sync.getBlob")
 
 
 class BlueskyCrawler(Crawler):
@@ -66,10 +60,9 @@ class BlueskyCrawler(Crawler):
                 scrape_item.add_children()
 
     @error_handling_wrapper
-    async def user(self, scrape_item: ScrapeItem, actor: str, feed_filter: str, *, likes: bool = False) -> None:
+    async def user(self, scrape_item: ScrapeItem, actor: str, feed_filter: str) -> None:
         scrape_item.setup_as_profile("")
-        pages = self.api.likes(actor) if likes else self.api.author_feed(actor, feed_filter)
-        async for page in pages:
+        async for page in self.api.author_feed(actor, feed_filter):
             for entry in page:
                 post = entry.get("post", entry)
                 new_item = scrape_item.create_child(self.parse_url(self._post_url(post)))
@@ -116,8 +109,7 @@ class BlueskyCrawler(Crawler):
                 image_index += 1
                 blob = image.get("image", {})
                 cid = blob.get("ref", {}).get("$link") or self.parse_url(fullsize, trim=False).name
-                mime_type = blob.get("mimeType")
-                ext = _IMAGE_EXTENSIONS.get(mime_type, ".jpg")
+                _, ext = self.get_filename_and_ext(cid, mime_type=blob.get("mimeType"))
                 image_url = self._blob_url(did, cid)
                 self.create_eager_task(
                     self.handle_file(image_url, scrape_item, cid + ext, ext, custom_filename=cid + ext)
@@ -172,4 +164,4 @@ class BlueskyCrawler(Crawler):
 
     @staticmethod
     def _blob_url(did: str, cid: str) -> AbsoluteHttpURL:
-        return AbsoluteHttpURL("https://bsky.social/xrpc/com.atproto.sync.getBlob").with_query(did=did, cid=cid)
+        return _BLOB_ENDPOINT.with_query(did=did, cid=cid)
