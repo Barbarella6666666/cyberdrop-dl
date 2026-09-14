@@ -133,7 +133,7 @@ def _extract_media(record: Mapping[str, Any]) -> Generator[Media]:
         asset_path = path[:-1]
         asset = operators.nested_itemgetter(*asset_path)(record) if asset_path else record
         cid = blob["ref"]["$link"]
-        if ratio := asset.get("aspectRatio"):
+        if (ratio := asset.get("aspectRatio")) and "$type" in ratio:
             ratio.pop("$type")
         yield Media(
             type=asset.get("$type") or str(asset_path or "<UNKNOWN>"),
