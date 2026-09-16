@@ -17,7 +17,7 @@ class Selector:
     ALBUMS = "#listView a.album-row"
     ALBUM_FILES = "#fileTbody tr[data-id]"
     MD5 = "div:-soup-contains('Checksum (MD5)') + div"
-    UPLOAD_DATE = "svg.h-4.w-4 + span"
+    UPLOAD_DATE = "#fileName + div > span:last-child"
     NEXT_PAGE = "a:-soup-contains(Next)[href*='?page']"
 
 
