@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Unpack, final, override
 
 from aiohttp import ClientConnectorError
 
+from cyberdrop_dl import aio
 from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.constants import FileExt
 from cyberdrop_dl.crawlers import Registry
@@ -131,12 +132,14 @@ class BunkrCrawler(Crawler):
         scrape_item.setup_as_album(title, album_id=album_id)
 
         origin = scrape_item.url.origin()
+        sleep = aio.periodic_sleep(10)
         async with self.new_task_group() as tg:
             for file in self._parse_files(css.select_text(soup, Selector.ALBUM_FILES)):
                 new_item = scrape_item.create_child(origin / "f" / file.slug)
                 new_item.uploaded_at = self.parse_date(file.timestamp, "%H:%M:%S %d/%m/%Y")
                 tg.create_task(self.file(new_item))
                 scrape_item.add_children()
+                await sleep()
 
     @override
     async def check_complete_from_referer(  # pyright: ignore[reportIncompatibleMethodOverride]
