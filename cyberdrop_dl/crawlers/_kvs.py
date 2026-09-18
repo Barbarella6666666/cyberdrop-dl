@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import itertools
 import re
@@ -167,7 +168,7 @@ class KernelVideoSharingCrawler(Crawler, is_abc=True):
             return
 
         soup = await self.request_soup(scrape_item.url)
-        video = extract_kvs_video(self, soup)
+        video = await asyncio.to_thread(extract_kvs_video, self, soup)
         name = video.url.name or video.url.parent.name
         filename, ext = self.get_filename_and_ext(name)
         scrape_item.uploaded_at = self._extract_upload_date(soup)

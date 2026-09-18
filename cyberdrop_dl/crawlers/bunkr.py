@@ -131,12 +131,12 @@ class BunkrCrawler(Crawler):
         scrape_item.setup_as_album(title, album_id=album_id)
 
         origin = scrape_item.url.origin()
-        for file in self._parse_files(css.select_text(soup, Selector.ALBUM_FILES)):
-            web_url = origin / "f" / file.slug
-            new_item = scrape_item.create_child(web_url)
-            new_item.uploaded_at = self.parse_date(file.timestamp, "%H:%M:%S %d/%m/%Y")
-            self.create_task(self.run(new_item, check_referer=True))
-            scrape_item.add_children()
+        async with self.new_task_group() as tg:
+            for file in self._parse_files(css.select_text(soup, Selector.ALBUM_FILES)):
+                new_item = scrape_item.create_child(origin / "f" / file.slug)
+                new_item.uploaded_at = self.parse_date(file.timestamp, "%H:%M:%S %d/%m/%Y")
+                tg.create_task(self.file(new_item))
+                scrape_item.add_children()
 
     @override
     async def check_complete_from_referer(  # pyright: ignore[reportIncompatibleMethodOverride]

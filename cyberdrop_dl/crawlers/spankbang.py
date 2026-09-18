@@ -115,8 +115,9 @@ class SpankBangCrawler(Crawler):
 
             scrape_item.url = resp.url
             video_id = resp.url.parts[1]
-            video = _parse_video(await resp.soup(), video_id)
+            html = await resp.text()
 
+        video = await _parse_video(html, video_id)
         old_db_url2 = self.PRIMARY_URL / video.stream_id / "video"
         if old_db_url2 != old_db_url and await self.check_complete_from_referer(old_db_url2):
             return
@@ -157,10 +158,12 @@ class SpankBangCrawler(Crawler):
                 tg.create_task(self.run(new_item, check_referer=True))
 
 
-def _parse_video(soup: BeautifulSoup, display_id: str) -> Video:
+@aio.to_thread
+def _parse_video(html: str, display_id: str) -> Video:
     # The title of the video is localized
     # soup should be from the main english site
-    if soup.select_one(Selector.VIDEO_REMOVED) or "This video is no longer available" in soup.get_text():
+    soup = css.soup(html)
+    if soup.select_one(Selector.VIDEO_REMOVED) or "This video is no longer available" in html:
         raise ScrapeError(410)
 
     title_tag = css.select(soup, "div#video h1")

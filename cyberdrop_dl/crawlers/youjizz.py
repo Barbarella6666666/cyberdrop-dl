@@ -4,6 +4,7 @@ import dataclasses
 import json
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from cyberdrop_dl import aio
 from cyberdrop_dl.crawlers.crawler import Crawler, SupportedPaths
 from cyberdrop_dl.mediaprops import Resolution
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
@@ -54,7 +55,7 @@ class YouJizzCrawler(Crawler):
 
         soup = await self.request_soup(scrape_item.url)
         scrape_item.url = canonical_url
-        video = _parse_video(soup)
+        video = await _parse_video(soup)
         filename, ext = self.get_filename_and_ext(video.src.name)
         custom_filename = self.create_custom_filename(
             video.title,
@@ -72,6 +73,7 @@ class YouJizzCrawler(Crawler):
         )
 
 
+@aio.to_thread
 def _parse_video(soup: BeautifulSoup) -> Video:
     js_text = css.select_text(soup, "script:-soup-contains('var dataEncodings')")
     encodings_text = extr_text(js_text, "var dataEncodings =", "var encodings").removesuffix(";")

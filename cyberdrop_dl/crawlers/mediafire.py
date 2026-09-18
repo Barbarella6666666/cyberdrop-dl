@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import dataclasses
 import itertools
@@ -144,7 +145,7 @@ class MediaFireCrawler(Crawler):
 
         soup = await self.request_soup(scrape_item.url, impersonate=True)
         scrape_item.uploaded_at = self.parse_iso_date(file.created)
-        link = self.parse_url(_extract_download_link(soup))
+        link = self.parse_url(await asyncio.to_thread(_extract_dl, soup))
         filename, ext = self.get_filename_and_ext(file.filename)
         await self.handle_file(link, scrape_item, file.filename, ext, custom_filename=filename)
 
@@ -204,7 +205,7 @@ class MediaFireAPI(API):
         return File.from_dict(resp)
 
 
-def _extract_download_link(soup: BeautifulSoup) -> str:
+def _extract_dl(soup: BeautifulSoup) -> str:
     download_button = soup.select_one("a#downloadButton")
     if not download_button:
         if "Something appears to be missing" in soup.get_text():
