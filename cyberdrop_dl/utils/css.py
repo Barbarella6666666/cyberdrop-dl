@@ -217,9 +217,7 @@ def parse_form(form: Tag, /) -> HTMLForm:
 
 
 def soup(content: str, parse_only: tuple[str, ...] | str | None = None) -> BeautifulSoup:
-    return BeautifulSoup(
-        content, "html.parser", parse_only=SoupStrainer(parse_only) if parse_only is not None else None
-    )
+    return BeautifulSoup(content, HTML_PARSER, parse_only=SoupStrainer(parse_only) if parse_only is not None else None)
 
 
 async def asoup(content: str, parse_only: tuple[str, ...] | str | None = None) -> BeautifulSoup:
