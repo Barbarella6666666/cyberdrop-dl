@@ -880,11 +880,6 @@
     "Network": {
       "additionalProperties": false,
       "properties": {
-        "async_dns": {
-          "default": true,
-          "title": "Async Dns",
-          "type": "boolean"
-        },
         "dump_responses": {
           "default": false,
           "title": "Dump Responses",
