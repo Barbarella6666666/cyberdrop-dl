@@ -180,6 +180,7 @@ max_thread_folder_depth: null
 min_free_space: 5.0GiB
 mtime: true
 network:
+  async_dns: true
   connection_timeout: 15.0
   dump_responses: false
   flaresolverr: null

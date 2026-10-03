@@ -54,9 +54,13 @@ async def _get_dns_resolver(
         return aiohttp.AsyncResolver
 
 
-async def choose_dns_resolver() -> type[aiohttp.AsyncResolver | aiohttp.ThreadedResolver]:
+async def choose_dns_resolver(
+    *, force_threaded: bool = False
+) -> type[aiohttp.AsyncResolver | aiohttp.ThreadedResolver]:
     global _DNS_CLS  # noqa: PLW0603
-    if _DNS_CLS is None:
+    if force_threaded:
+        _DNS_CLS = aiohttp.ThreadedResolver  # pyright: ignore[reportConstantRedefinition]
+    elif _DNS_CLS is None:
         _DNS_CLS = await _get_dns_resolver()  # pyright: ignore[reportConstantRedefinition]
     return _DNS_CLS
 
