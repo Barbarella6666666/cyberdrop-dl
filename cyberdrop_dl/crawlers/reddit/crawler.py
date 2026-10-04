@@ -31,7 +31,9 @@ class RedditImagesCrawler(Crawler):
     @classmethod
     @override
     def transform_url(cls, url: AbsoluteHttpURL) -> AbsoluteHttpURL:
-        url = super().transform_url(url).with_query(None)
+        url = super().transform_url(url)
+        if "external." not in url.host:
+            url = url.with_query(None)
         if url.host == "preview.redd.it":
             return url.with_host(cls.PRIMARY_URL.host)
         return url
