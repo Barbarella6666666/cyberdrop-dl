@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Optional `lxml` dependency for faster HTML parsing
+- Vimeo support
 - Reddit support (via `arctic_shift`)
 
 ### Changed
