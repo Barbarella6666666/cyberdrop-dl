@@ -9,7 +9,6 @@ from typing_extensions import AsyncGenerator
 
 from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths
-from cyberdrop_dl.exceptions import ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import extr_text
 from cyberdrop_dl.utils._url import remove_query_params
@@ -130,8 +129,7 @@ class PicDropAPI(API):
         return deserialize(Gallery, resp, id=gid, path=path, user=user)
 
     async def files(self, path: str) -> AsyncGenerator[File]:
-        limit = 900
-        url = (self.ENTRYPOINT / "content" / path / "files").with_query(limit=limit)
+        url = (self.ENTRYPOINT / "content" / path / "files").with_query(limit=500)
         while True:
             resp = await self.request_json(url)
             for file in resp["files"]:
@@ -140,9 +138,7 @@ class PicDropAPI(API):
             if not resp.get("hasMore"):
                 break
 
-            # TODO: figure out what's the query param to fetch the next page
-            msg = f"Gallery {path} has more than {limit} files. Only the first {limit} files where downloaded"
-            raise ScrapeError(422, msg)
+            url = url.update_query(offset=resp["lastSortKey"])
 
     async def download(self, path: str, key: str) -> AbsoluteHttpURL:
         assert self._csrf_token
