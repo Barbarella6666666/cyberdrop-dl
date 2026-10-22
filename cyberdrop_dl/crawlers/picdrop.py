@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 
 from typing_extensions import AsyncGenerator
 
+from cyberdrop_dl import aio
 from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
@@ -46,13 +47,15 @@ class PicDropCrawler(Crawler):
     async def gallery(self, scrape_item: ScrapeItem, user: str, gid: str) -> None:
         gallery = await self.api.gallery(user, gid)
         scrape_item.setup_as_album(self.create_title(gallery.name, gallery.path), album_id=gallery.path)
-        file_key = scrape_item.url.query.get("file")
         downloaded = await self.get_completed_by_album(gallery.path)
-        async with self.new_task_group() as tg:
-            async for file in self.api.files(gallery.path):
-                if file_key and file.key != file_key:
-                    continue
 
+        if file_key := scrape_item.url.query.get("file"):
+            files = aio.to_async_iterable([await self.api.file(gallery.path, file_key)])
+        else:
+            files = self.api.files(gallery.path)
+
+        async with self.new_task_group() as tg:
+            async for file in files:
                 url = scrape_item.url.with_query(file=file.key)
                 if url in downloaded:
                     continue
@@ -139,6 +142,11 @@ class PicDropAPI(API):
                 break
 
             url = url.update_query(offset=resp["lastSortKey"])
+
+    async def file(self, path: str, key: str) -> File:
+        url = self.ENTRYPOINT / "content" / path / "files" / key
+        resp = await self.request_json(url)
+        return File.parse(resp)
 
     async def download(self, path: str, key: str) -> AbsoluteHttpURL:
         assert self._csrf_token
