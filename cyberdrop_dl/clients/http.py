@@ -53,6 +53,7 @@ class _LazyResponseLog:
 
     def __json__(self) -> dict[str, Any]:
         resp = self.resp.__json__()
+        resp["response_headers"] = {k: truncated_preview(v) for k, v in self.resp.headers.items()}
         if type(resp["content"]) is str:
             resp["content"] = truncated_preview(resp["content"], env.MAX_LOG_MSG_LENGTH if self.content_only else 100)
 
