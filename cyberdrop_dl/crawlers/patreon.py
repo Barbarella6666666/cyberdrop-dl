@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
-from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict, TypeGuard, cast, final
 
 from typing_extensions import ReadOnly
 
@@ -422,25 +422,34 @@ def _parse_media(post: Post, included: dict[str, Included]) -> Generator[Media]:
             yield Media(m_hash, None, url, image)
 
 
+@final
+class TipTap:
+    ASSET = frozenset({"audio", "link", "video", "image"})
+    DOC = frozenset(
+        {
+            "heading",
+            "hardBreak",
+            "horizontalRule",
+            "listItem",
+            "bulletList",
+            "orderedList",
+            "blockquote",
+            "paragraph",
+            "text",
+            "doc",
+        }
+    )
+    TEXT = frozenset(("italic", "underline", "strike", "bold"))
+
+
 def _tiptap_media_visitor(_: object, obj: object) -> TypeGuard[dict[str, Any]]:
     if not (type(obj) is dict and (t_type := obj.get("type"))):
         return False
 
-    if t_type in {"audio", "link", "video", "image"}:
+    if t_type in TipTap.ASSET:
         return bool(obj.get("attrs"))
 
-    if t_type not in {
-        "hardBreak",
-        "horizontalRule",
-        "listItem",
-        "bulletList",
-        "orderedList",
-        "blockquote",
-        "paragraph",
-        "text",
-        "doc",
-        "bold",
-    }:
+    if not (t_type in TipTap.DOC or t_type in TipTap.TEXT):
         PatreonCrawler.get_logger().warning("Unknown TIPTAP element: %s", obj)
 
     return False
