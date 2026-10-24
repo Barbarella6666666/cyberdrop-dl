@@ -15,6 +15,7 @@ from cyberdrop_dl.crawlers.vk.types import (
     Audio,
     AudioPlaylist,
     File,
+    Format,
     Graffiti,
     Link,
     Photo,
@@ -223,7 +224,12 @@ class VKVideoCrawler(VKBaseCrawler, wiki_site="VKVideo"):
             self.handle_embed(new_item)
             return
 
-        best_fmt = max(video.formats, key=lambda f: f.score)
+        if not video.formats:
+            if video.restriction:
+                raise ScrapeError(403, video.restriction)
+            raise ScrapeError(422, f"No valid HLS or MP4 formats found for {video.web_path}")
+
+        best_fmt = max(video.formats, key=Format.score)
         m3u8 = info = debrid_url = None
         if best_fmt.hls:
             m3u8, info = await self.request_m3u8(best_fmt.url)

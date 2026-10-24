@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 
 from cyberdrop_dl.crawlers.vk import full_res_img, try_parse_url
 from cyberdrop_dl.exceptions import ScrapeError
-from cyberdrop_dl.utils import parse_url
+from cyberdrop_dl.utils import css, parse_url
 from cyberdrop_dl.utils.dataclass import deserialize
 
 if TYPE_CHECKING:
@@ -59,7 +59,6 @@ class Format(APIObject):
     height: int | None = None
     hls: bool = False
 
-    @property
     def score(self) -> tuple[bool, int]:
         return (not self.hls, self.height or 0)
 
@@ -74,6 +73,7 @@ class Video(Owned):
     title: str | None = None
     access_key: str | None = None
     description: str | None = None
+    restriction: str | None = None
 
     @override
     @classmethod
@@ -83,6 +83,8 @@ class Video(Owned):
             if (thumbs := video.get("image"))
             else None
         )
+        if restriction := video.get("content_restricted_message") or video.get("restriction", {}).get("text"):
+            restriction = css.unescape(restriction)
 
         return deserialize(
             cls,
@@ -90,6 +92,7 @@ class Video(Owned):
             thumb=thumb,
             formats=tuple(_extract_formats(video)),
             embed=video.get("files", {}).get("external"),
+            restriction=restriction or None,
         )
 
     @property
