@@ -22,6 +22,26 @@ All notable changes to this project will be documented here. For more details, v
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.13.0] - UNRELEASED
+
+### Added
+
+- Upfile support
+- Picdrop support
+- PPP3 support
+- VK support
+- VKVideo support
+
+### Changed
+
+- Only disable Flaresolverr after 5 wrong/missing solutions instead of 1
+
+### Fixed
+
+- All tweets being skipped (Twitter)
+- Do not download thumbnails from embedded images (Simpcity)
+- Do not disable Flaresolverr when a request for an specific site is blocked (ex: IP ban)
+
 ## [10.12.1] - 2026-10-20
 
 ### Fixed
