@@ -89,11 +89,12 @@ class VKBaseCrawler(Crawler, is_abc=True):
             "/clip<owner_id>_<video_id>",
             "/video<owner_id>_<video_id>?list=<access_key>",
             "/video_ext.php?oid=<owner_id>&id=<video_id>",
+            "/playlist/<owner_id>_<playlist_id>/video<owner_id>_<video_id>",
         ),
     }
     DOMAIN: ClassVar[str] = "vk"
     FOLDER_DOMAIN: ClassVar[str] = "VK"
-    DEFAULT_POST_TITLE_FORMAT: ClassVar[str] = "{date} - {id}"
+    DEFAULT_POST_TITLE_FORMAT: ClassVar[str] = "{date} [{id}]"
 
     def __post_init__(self) -> None:
         for host in self.SUPPORTED_DOMAINS:
@@ -119,6 +120,8 @@ class VKBaseCrawler(Crawler, is_abc=True):
                 if slug.startswith(("video", "clip")):
                     url = url.with_host(VKVideoCrawler.PRIMARY_URL.host)
 
+            case ["playlist", _, slug] if slug.startswith(("video", "clip")):
+                url = url.with_host(VKVideoCrawler.PRIMARY_URL.host).with_path(slug, keep_query=True)
             case ["clips", username]:
                 url = VKVideoCrawler.PRIMARY_URL / f"@{username}" / "clips"
             case ["video", username] if username.startswith("@"):
