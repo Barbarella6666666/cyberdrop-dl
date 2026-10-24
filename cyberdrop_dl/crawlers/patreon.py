@@ -17,7 +17,7 @@ from cyberdrop_dl.utils.dataclass import DictDataclass
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable
+    from collections.abc import AsyncGenerator, Generator
 
     from bs4 import BeautifulSoup
 
@@ -126,19 +126,14 @@ class PatreonCrawler(Crawler):
 
     def _extract_media(self, post: Post, included: dict[str, Included]) -> tuple[Media, ...]:
         medias = tuple(_parse_media(post, included))
-        unique_medias = tuple(_unique_media(medias))
-        self.log.debug(
-            "Found %s media assets in post %s (%s unique)\n%s",
-            len(medias),
-            post["id"],
-            len(unique_medias),
-            LazyLogMedia(medias),
-        )
-        return unique_medias
+        self.log.debug("Found %s media assets in post %s \n%s", len(medias), post["id"], LazyLogMedia(medias))
+        return medias
 
     async def _post_media(self, scrape_item: ScrapeItem, post: Post, medias: tuple[Media, ...]) -> None:  # noqa: C901
         seen_urls: set[AbsoluteHttpURL] = set()
-        seen_media_ids: set[str] = {m.id for m in medias}
+        seen_media_ids: set[str] = set()
+        seen_media_hashes: set[str] = set()
+
         sleep = aio.periodic_sleep(10)
 
         async def dispatch_url(link: str, *, embed: bool = False) -> None:
@@ -159,6 +154,14 @@ class PatreonCrawler(Crawler):
 
         async with self.new_task_group() as tg:
             for media in medias:
+                if media.id in seen_media_ids:
+                    continue
+                seen_media_ids.add(media.id)
+                if media.hash:
+                    if media.hash in seen_media_hashes:
+                        continue
+                    seen_media_hashes.add(media.hash)
+
                 tg.create_task(self._media(scrape_item, media))
                 scrape_item.add_children()
                 await sleep()
@@ -172,7 +175,7 @@ class PatreonCrawler(Crawler):
             if not (links or assets):
                 return
 
-            self.log.debug("Found embeded TIPTAP media in post %s: %s", post["id"], {"links": links, "assets": assets})
+            self.log.debug("Found embedded TIPTAP media in post %s: %s", post["id"], {"links": links, "assets": assets})
 
             for asset in assets:
                 if asset["id"] not in seen_media_ids:
@@ -256,11 +259,11 @@ class LazyLogMedia:
     def __init__(self, media: tuple[Media, ...]) -> None:
         self.media: tuple[Media, ...] = media
 
-    def __json__(self) -> dict[str, dict[str, Any]]:
-        return {m.id: m.__json__() for m in self.media}
+    def __json__(self) -> tuple[dict[str, Any], ...]:
+        return tuple(m.__json__() for m in self.media)
 
     def __str__(self) -> str:
-        return str(self.__json__())
+        return "\n".join(map(str, self.__json__()))
 
 
 @HTTPConfig(impersonate=True)
@@ -398,21 +401,6 @@ def _md5_from_url(url: AbsoluteHttpURL) -> str | None:
     for p in reversed(url.parts):
         if len(p) == 32:
             return p
-
-
-def _unique_media(medias: Iterable[Media]) -> Generator[Media]:
-    media_ids: set[str] = set()
-    media_hashes: set[str] = set()
-
-    for media in medias:
-        if media.id in media_ids:
-            continue
-        media_ids.add(media.id)
-        if media.hash:
-            if media.hash in media_hashes:
-                continue
-            media_hashes.add(media.hash)
-        yield media
 
 
 def _parse_media(post: Post, included: dict[str, Included]) -> Generator[Media]:
