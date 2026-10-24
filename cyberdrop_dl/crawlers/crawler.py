@@ -591,13 +591,9 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
             json_check=self.__json_resp_check__,
         )
 
-        if media_item.ext not in FileExt.MEDIA:
-            thumbnail = None
+        if media_item.ext in FileExt.MEDIA:
+            media_item.thumbnail = self.normalize_url(thumbnail)
 
-        elif thumbnail is not None and type(thumbnail) is not AbsoluteHttpURL:
-            thumbnail = self.parse_url(thumbnail)
-
-        media_item.thumbnail = thumbnail
         media_item.headers.update(self._prepare_headers(scrape_item))
         if headers:
             media_item.headers.update(headers)
@@ -609,20 +605,35 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
             check_path_traversal(self.config.download_folder, media_item.download_folder)
         check_dangerous_filename(media_item.download_filename or media_item.filename)
         await self.handle_media_item(media_item, m3u8)
+        await self._handle_thumb(media_item, scrape_item)
 
-        if thumbnail and self.config.filters.files.thumbnails:
-            with self.catch_errors(thumbnail):
-                ext = await self.sniff_ext(thumbnail)
-                thumb_name = f"{Path(media_item.filename).stem}_thumb{ext}"
-                filename, _ = self.get_filename_and_ext(thumb_name)
-                await self.handle_file(
-                    thumbnail,
-                    scrape_item,
-                    thumb_name,
-                    ext,
-                    custom_filename=filename,
-                    frag="thumbnail",
-                )
+    @final
+    @classmethod
+    def normalize_url(cls, url: AbsoluteHttpURL | str | None = None) -> AbsoluteHttpURL | None:
+        if not url:
+            return None
+
+        if type(url) is not AbsoluteHttpURL:
+            url = cls.parse_url(url)
+
+        return url
+
+    async def _handle_thumb(self, media_item: MediaItem, scrape_item: ScrapeItem) -> None:
+        if not (media_item.thumbnail and self.config.filters.files.thumbnails):
+            return
+
+        with self.catch_errors(media_item.thumbnail):
+            ext = await self.sniff_ext(media_item.thumbnail)
+            thumb_name = f"{Path(media_item.filename).stem}_thumb{ext}"
+            filename, _ = self.get_filename_and_ext(thumb_name)
+            await self.handle_file(
+                media_item.thumbnail,
+                scrape_item,
+                thumb_name,
+                ext,
+                custom_filename=filename,
+                frag="thumbnail",
+            )
 
     async def sniff_ext(self, thumbnail: AbsoluteHttpURL, headers: dict[str, str] | None = None) -> str:
         try:
