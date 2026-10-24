@@ -8,7 +8,7 @@ import time
 from contextvars import ContextVar
 from enum import StrEnum
 from http.cookies import SimpleCookie
-from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, Unpack
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict, Unpack
 
 import aiohttp
 from multidict import CIMultiDict, CIMultiDictProxy
@@ -178,6 +178,8 @@ class Limiter:
 class Client:
     """Class that handles communication with Flaresolverr."""
 
+    MAX_INVALID_RESPONSES: ClassVar[int] = 5
+
     def __init__(self, http: aiohttp.ClientSession, config: Config) -> None:
         self.http: aiohttp.ClientSession = http
         self.config: Config = config
@@ -218,8 +220,8 @@ class Client:
             raise
         except _InvalidResponseError:
             self._invalid_responses += 1
-            if self._invalid_responses > (max_wrong := 5):
-                self.disable(f"Too many invalid/missing solutions [{max_wrong}+]")
+            if self._invalid_responses > self.MAX_INVALID_RESPONSES:
+                self.disable(f"Too many invalid/missing solutions [{self.MAX_INVALID_RESPONSES}+]")
             raise
         except Exception:
             self.disable()

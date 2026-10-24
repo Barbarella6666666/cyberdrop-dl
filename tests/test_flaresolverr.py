@@ -200,8 +200,10 @@ async def test_request_error_response(
     async with aiohttp.ClientSession() as session:
         client = Client(session, _config(proxy=False, use_session=False))
         monkeypatch.setattr(client, "_request", fake_request)
-        with pytest.raises(expected_error):
-            await client.request(AbsoluteHttpURL("https://example.com"))
+        for _ in range(client.MAX_INVALID_RESPONSES + 1):
+            assert client.is_down is False
+            with pytest.raises(expected_error):
+                await client.request(AbsoluteHttpURL("https://example.com"))
 
     assert client.is_down is disabled
 
