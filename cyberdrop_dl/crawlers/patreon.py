@@ -10,7 +10,7 @@ from typing_extensions import ReadOnly
 from cyberdrop_dl import aio
 from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths
-from cyberdrop_dl.exceptions import NoExtensionError, ScrapeError
+from cyberdrop_dl.exceptions import MaxChildrenError, NoExtensionError, ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import css, extr_text, next_js, traversal
 from cyberdrop_dl.utils.dataclass import DictDataclass
@@ -121,9 +121,10 @@ class PatreonCrawler(Crawler):
         post_title = self.create_separate_post_title(post["title"], post["id"], date)
         scrape_item.append_folders(post_title)
         self.create_eager_task(self.write_metadata(scrape_item, f"post_{post['id']}", post))
-        await self._post_media(scrape_item, post, included)
+        medias = self._extract_media(post, included)
+        await self._post_media(scrape_item, post, medias)
 
-    async def _post_media(self, scrape_item: ScrapeItem, post: Post, included: dict[str, Included]) -> None:
+    def _extract_media(self, post: Post, included: dict[str, Included]) -> tuple[Media, ...]:
         medias = tuple(_parse_media(post, included))
         unique_medias = tuple(_unique_media(medias))
         self.log.debug(
@@ -133,24 +134,31 @@ class PatreonCrawler(Crawler):
             len(unique_medias),
             LazyLogMedia(medias),
         )
+        return unique_medias
 
+    async def _post_media(self, scrape_item: ScrapeItem, post: Post, medias: tuple[Media, ...]) -> None:  # noqa: C901
         seen_urls: set[AbsoluteHttpURL] = set()
-        seen_media_ids: set[str] = {m.id for m in unique_medias}
+        seen_media_ids: set[str] = {m.id for m in medias}
         sleep = aio.periodic_sleep(10)
 
-        async def dispatch_url(link: str, *, embed: bool) -> None:
+        async def dispatch_url(link: str, *, embed: bool = False) -> None:
             url = self.parse_url(link)
-            if url in seen_urls or url.host == self.PRIMARY_URL.host:
+            if url in seen_urls:
+                return
+
+            if url.host == self.PRIMARY_URL.host:
+                msg = f"Skipping nested thread URL: {url}, parent: {scrape_item.url}"
+                self.raise_exc(url, MaxChildrenError(msg))
                 return
 
             new_item = scrape_item.create_child(url)
-            seen_urls.add(new_item.url)
+            seen_urls.add(url)
             self.handle_external_links(new_item, reset=not embed)
             scrape_item.add_children()
             await sleep()
 
         async with self.new_task_group() as tg:
-            for media in unique_medias:
+            for media in medias:
                 tg.create_task(self._media(scrape_item, media))
                 scrape_item.add_children()
                 await sleep()
@@ -166,15 +174,18 @@ class PatreonCrawler(Crawler):
 
             self.log.debug("Found embeded TIPTAP media in post %s: %s", post["id"], {"links": links, "assets": assets})
 
-            for url in links:
-                await dispatch_url(url, embed=False)
-
             for asset in assets:
                 if asset["id"] not in seen_media_ids:
                     seen_media_ids.add(asset["id"])
                     tg.create_task(self.media(scrape_item, asset["id"]))
                     scrape_item.add_children()
                     await sleep()
+
+            if not self.config.crawlers.patreon.content_urls:
+                return
+
+            for url in links:
+                await dispatch_url(url)
 
     @error_handling_wrapper
     async def media(self, scrape_item: ScrapeItem, media_id: str) -> None:

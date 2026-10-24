@@ -211,6 +211,9 @@
         "only_haven": {
           "$ref": "#/$defs/KemonoConfig"
         },
+        "patreon": {
+          "$ref": "#/$defs/PatreonConfig"
+        },
         "pawchive": {
           "$ref": "#/$defs/KemonoConfig"
         },
@@ -999,6 +1002,18 @@
         }
       },
       "title": "OnePaceConfig",
+      "type": "object"
+    },
+    "PatreonConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "content_urls": {
+          "default": true,
+          "title": "Content Urls",
+          "type": "boolean"
+        }
+      },
+      "title": "PatreonConfig",
       "type": "object"
     },
     "PornHubConfig": {

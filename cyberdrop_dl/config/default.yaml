@@ -61,6 +61,8 @@ crawlers:
     embed: true
     expand_posts: false
     file: true
+  patreon:
+    content_urls: true
   pawchive:
     attachments: true
     content_urls: true

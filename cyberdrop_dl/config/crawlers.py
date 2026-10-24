@@ -93,6 +93,11 @@ class TwitterConfig(ConfigModel):
     # "large", "medium", or "small" are always available
 
 
+class PatreonConfig(ConfigModel):
+    content_urls: bool = True
+    "Download any URL found inside the description (text) of a post"
+
+
 class BlueSkyConfig(ConfigModel):
     external: bool = True
     "Parse and download embeds from third-party sites"
@@ -206,6 +211,7 @@ class Crawlers(ConfigGroup, name=None):
     octave_music: OctaveMusicConfig = Field(default_factory=OctaveMusicConfig)
     one_pace: OnePaceConfig = Field(default_factory=OnePaceConfig)
     only_haven: KemonoConfig = Field(default_factory=KemonoConfig)
+    patreon: PatreonConfig = Field(default_factory=PatreonConfig)
     pawchive: KemonoConfig = Field(default_factory=KemonoConfig)
     pornhub: PornHubConfig = Field(default_factory=PornHubConfig)
     reddit: RedditConfig = Field(default_factory=RedditConfig)
