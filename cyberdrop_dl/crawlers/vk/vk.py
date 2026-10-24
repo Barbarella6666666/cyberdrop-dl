@@ -129,7 +129,7 @@ class VKBaseCrawler(Crawler, is_abc=True):
         return url
 
 
-class VKVideoCrawler(VKBaseCrawler):
+class VKVideoCrawler(VKBaseCrawler, wiki_site="VKVideo"):
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = VKBaseCrawler.SUPPORTED_PATHS | {
         "User / Group videos": (
             "@<owner_screen_name>",
@@ -246,7 +246,7 @@ class VKVideoCrawler(VKBaseCrawler):
 
 
 @URLConfig(allow_empty_path=True)
-class VKCrawler(VKBaseCrawler):
+class VKCrawler(VKBaseCrawler, wiki_site="VK"):
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = ("vk.ru", "vk.com", ".userapi.com", "vk.me")
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = VKBaseCrawler.SUPPORTED_PATHS | {
         "User / Group wall": (

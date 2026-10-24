@@ -117,6 +117,7 @@ class CrawlerInfo:
     scrape_mapper_keys: tuple[str, ...]
     supported_domains: tuple[str, ...]
     supported_paths: dict[str, tuple[str, ...]]
+    wiki_site: str | None = None
 
     __iter__ = DictDataclass.__iter__
 
@@ -306,7 +307,13 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         This method its called once and only if the crawler is actually going to be scrape something"""
 
     def __init_subclass__(
-        cls, *, is_abc: bool = False, is_generic: bool = False, is_debug: bool = False, **kwargs: Any
+        cls,
+        *,
+        is_abc: bool = False,
+        is_generic: bool = False,
+        is_debug: bool = False,
+        wiki_site: str | None = None,
+        **kwargs: Any,
     ) -> None:
         assert cls.__name__.endswith("Crawler"), f"{cls.__name__} does not end with 'Crawler'"
         assert cls.__name__ not in Registry.names
@@ -353,6 +360,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
             supported_domains=_make_wiki_supported_domains(scrape_keys),
             scrape_mapper_keys=scrape_keys,
             supported_paths=paths,
+            wiki_site=wiki_site or cls.FOLDER_DOMAIN,
         )
         if add_to_registry:
             Registry.concrete.add(cls)
