@@ -193,6 +193,12 @@ class AudioPlaylist(Owned):
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
+class VideoPlaylist(Owned):
+    title: str
+    count: int
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
 class Graffiti(APIObject):  # Old photo format
     sizes: dict[int, AbsoluteHttpURL]
 

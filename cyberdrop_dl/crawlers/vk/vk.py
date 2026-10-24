@@ -29,6 +29,8 @@ from cyberdrop_dl.utils._url import remove_query_params
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterable
+
     from cyberdrop_dl.url_objects import ScrapeItem
 
 
@@ -135,6 +137,7 @@ class VKVideoCrawler(VKBaseCrawler):
             "@<owner_screen_name>/all",
             "@<owner_screen_name>/donut",
         ),
+        "Playlist": "/playlist/<owner_id>_<playlist_id>",
     }
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = "vkvideo.ru", "vkvideo.com"
     PRIMARY_URL: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://vkvideo.com")
@@ -152,6 +155,9 @@ class VKVideoCrawler(VKBaseCrawler):
             case [owner, "clips" | "all" | "donut" as kind]:
                 kind = "videos" if kind == "all" else kind
                 await self.owner_videos(scrape_item, owner.removeprefix("@"), kind)
+            case ["playlist", slug] if "_" in slug:
+                owner_id, _, playlist_id = slug.partition("_")
+                await self.playlist(scrape_item, owner_id, playlist_id)
             case [slug] if m := re.match(_PAGE_REGEX, slug):
                 match m.groups():
                     case ["clip" | "video", str(owner_id), str(video_id)]:
@@ -162,17 +168,32 @@ class VKVideoCrawler(VKBaseCrawler):
                 raise ValueError
 
     @error_handling_wrapper
+    async def playlist(self, scrape_item: ScrapeItem, owner_id: str, playlist_id: str) -> None:
+        owner, play = await aio.gather(
+            self.api.resolve_owner(owner_id), self.api.get_playlist(owner_id, playlist_id), fail_fast=False
+        )
+        scrape_item.setup_as_profile(self.create_title(owner.full_name))
+        title = self.create_title(f"{play.title or play.slug} [playlist]", play.slug)
+        scrape_item.append_folders(title)
+        await self._iter_videos(scrape_item, self.api.get_playlist_videos(owner_id, playlist_id))
+
+    @error_handling_wrapper
     async def owner_videos(self, scrape_item: ScrapeItem, owner_id: str, kind: str) -> None:
         owner = await self.api.resolve_owner(owner_id)
         scrape_item.setup_as_profile(self.create_title(owner.full_name))
         scrape_item.append_folders(kind)
+        await self._iter_videos(scrape_item, self.api.get_videos(scrape_item.url))
+
+    async def _iter_videos(self, scrape_item: ScrapeItem, videos: AsyncIterable[Video]) -> None:
+        sleep = aio.periodic_sleep(10)
         async with self.new_task_group() as tg:
-            async for video in self.api.get_videos(scrape_item.url):
+            async for video in videos:
                 url = self.PRIMARY_URL / video.web_path
                 if video.access_key:
                     url = url.update_query(list=video.access_key)
                 tg.create_task(self.video_task(scrape_item.create_child(url), video))
                 scrape_item.add_children()
+                await sleep()
 
     @error_handling_wrapper
     async def video(self, scrape_item: ScrapeItem, owner_id: str, video_id: str) -> None:

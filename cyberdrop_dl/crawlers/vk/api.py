@@ -23,6 +23,7 @@ from cyberdrop_dl.crawlers.vk.types import (
     PhotoSize,
     Post,
     Video,
+    VideoPlaylist,
 )
 from cyberdrop_dl.exceptions import DDOSGuardError, ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
@@ -210,6 +211,44 @@ class VKAPI(API):
                 break
 
             section = await self.catalog.get_section(section.id, section.next_from)
+
+    async def get_playlist(self, owner_id: str, playlist_id: str) -> VideoPlaylist:
+        resp = await self.method(
+            "video.getAlbumById",
+            {
+                "album_id": playlist_id,
+                "owner_id": owner_id,
+            },
+        )
+        if not resp:
+            raise ScrapeError(404)
+        return VideoPlaylist.parse(resp)
+
+    async def get_playlist_videos(self, owner_id: str, playlist_id: str, *, offset: int = 0) -> AsyncGenerator[Video]:
+        data = {
+            "album_id": playlist_id,
+            "offset": 0,
+            "owner_id": owner_id,
+            "sort_album": 0,
+        }
+        seen: set[str] = set()
+        resp = await self.method("video.getFromAlbum", data)
+        total = resp["count"]
+        while True:
+            offset += len(items := resp["items"])
+            found_new_videos: bool = False
+            for item in items:
+                video = Video.parse(item["video"])
+                if video.slug not in seen:
+                    seen.add(video.slug)
+                    found_new_videos = True
+                    yield video
+
+            if not found_new_videos or offset >= total:
+                break
+
+            data["offset"] = offset
+            resp = await self.method("video.getFromAlbum", data)
 
     @deprecated("DO NOT USE. This endpoint works but all images sources return 404")
     async def get_photo(self, owner_id: str, photo_id: str, album_id: str | None = None) -> Photo:
