@@ -22,10 +22,11 @@ All notable changes to this project will be documented here. For more details, v
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [10.13.0] - UNRELEASED
+## [10.13.0] - 2026-10-24
 
 ### Added
 
+- New `--crawlers.patreon.content-urls` option
 - Upfile support
 - Picdrop support
 - PPP3 support
@@ -39,8 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - All tweets being skipped (Twitter)
+- Some files not being parsed while downloading a post (Patreon)
 - Do not download thumbnails from embedded images (Simpcity)
-- Do not disable Flaresolverr when a request for an specific site is blocked (ex: IP ban)
+- Do not disable Flaresolverr when a request for a specific site is blocked (ex: IP ban)
+
+### Security
+
+- Updated CCADB embedded bundle to remove compromised eMudhra (emSign) certificates
 
 ## [10.12.1] - 2026-10-20
 
