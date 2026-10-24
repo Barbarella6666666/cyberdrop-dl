@@ -32,6 +32,9 @@ MAX_TIMEOUT = 60_000
 _CF_BLOCKED_MSG = "Cloudflare has blocked this request"
 
 
+class _InvalidResponseError(FlaresolverrError): ...
+
+
 class Command(StrEnum):
     CREATE_SESSION = "sessions.create"
     DESTROY_SESSION = "sessions.destroy"
@@ -182,6 +185,7 @@ class Client:
         self.session: str | None = None
         self.request_id: Callable[[], int] = itertools.count(1).__next__
         self.is_down: bool = False
+        self._invalid_responses: int = 0
 
     __repr__ = simple_repr("config", "session", "limiter", "is_down")
 
@@ -195,10 +199,13 @@ class Client:
         finally:
             self.session = None
 
-    def disable(self) -> None:
+    def disable(self, reason: str | None = None) -> None:
         if not self.is_down:
             self.is_down = True
-            logger.warning("Flaresolverr has been disabled")
+            msg = "Flaresolverr has been disabled"
+            if reason:
+                msg += f" ({reason})"
+            logger.warning(msg)
 
     @contextlib.contextmanager
     def _disable_on_error(self) -> Generator[None]:
@@ -208,6 +215,11 @@ class Client:
             self.disable()
             self.raise_conn_error(e)
         except CloudflareBlockedError:
+            raise
+        except _InvalidResponseError:
+            self._invalid_responses += 1
+            if self._invalid_responses > (max_wrong := 5):
+                self.disable(f"Too many invalid/missing solutions [{max_wrong}+]")
             raise
         except Exception:
             self.disable()
@@ -264,10 +276,10 @@ class Client:
             if not resp.ok:
                 if _CF_BLOCKED_MSG in resp.message:
                     raise CloudflareBlockedError(resp.message)
-                raise FlaresolverrError(f"Failed to resolve URL with Flaresolverr. {resp.message}")
+                raise _InvalidResponseError(f"Failed to resolve URL with Flaresolverr. {resp.message}")
 
             if not resp.solution:
-                raise FlaresolverrError("Flaresolverr response did not include a solution")
+                raise _InvalidResponseError("Flaresolverr response did not include a solution")
 
             return resp.solution
 
@@ -281,7 +293,7 @@ class Client:
                 try:
                     return Response.parse(request_id, data)
                 except (TypeError, KeyError) as e:
-                    raise FlaresolverrError("Invalid response from Flaresolverr") from e
+                    raise _InvalidResponseError("Invalid response from Flaresolverr") from e
                 finally:
                     logger.traffic("Finished FlareSolverr request [id=%s]\n%s", request_id, _LazyResponseLog(data))
 
@@ -295,6 +307,7 @@ class Client:
         resp = await self._request(Command.CREATE_SESSION, payload, timeout=self.limiter.session_timeout)
 
         if not resp.ok:
+            self.disable("Unable to create session")
             raise FlaresolverrError(f"Flaresolverr said: {resp.message}")
 
     async def destroy_session(self, name: str) -> None:
