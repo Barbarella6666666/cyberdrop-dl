@@ -24,8 +24,14 @@ from cyberdrop_dl.crawlers import ALLOW_NO_EXT, SKIP_DOWNLOAD, Registry
 from cyberdrop_dl.crawlers._hls import HLSMixin
 from cyberdrop_dl.downloader.http import Downloader
 from cyberdrop_dl.exceptions import MaxChildrenError, NoExtensionError, ScrapeError
-from cyberdrop_dl.filepath import check_dangerous_filename, check_path_traversal, compose_filename, get_filename_and_ext
-from cyberdrop_dl.mediaprops import Codecs, ISO639Subtitle, Resolution
+from cyberdrop_dl.filepath import (
+    Filename,
+    check_dangerous_filename,
+    check_path_traversal,
+    compose_filename,
+    get_filename_and_ext,
+)
+from cyberdrop_dl.mediaprops import Codecs, ISO639Subtitle, Resolution, ResolvedISO639Subtitle
 from cyberdrop_dl.models.validators import strings
 from cyberdrop_dl.url_objects import AbsoluteHttpURL, MediaItem, MuxVideo, ScrapeItem, is_absolute_http_url
 from cyberdrop_dl.utils import css, dates, enter_context, fast_cache, is_blob_or_svg, m3u8, parse_url, unique
@@ -799,7 +805,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         *,
         assume_ext: str | None = ".mp4",
         mime_type: str | None = None,
-    ) -> tuple[str, str]:
+    ) -> Filename:
         """Wrapper around `utils.get_filename_and_ext`.
         Calls it as is.
         If that fails, appends `assume_ext` and tries again, but only if the user had exclude_files_with_no_extension = `False`
@@ -1043,6 +1049,67 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
                     ext,
                     custom_filename=sub_name,
                 )
+            )
+
+    @final
+    def resolve_sub(self, sub: ISO639Subtitle | ResolvedISO639Subtitle) -> ResolvedISO639Subtitle:
+        if type(sub) is ResolvedISO639Subtitle:
+            return sub
+
+        lang_code = sub.lang_code or "en"
+        src = self.parse_url(sub.url)
+        ext = sub.ext
+
+        if not ext:
+            try:
+                ext = self.get_filename_and_ext(src.name).suffix
+            except NoExtensionError:
+                pass
+
+        return ResolvedISO639Subtitle(
+            url=src,
+            lang_code=lang_code,
+            ext=ext or sub.fallback_ext,
+            name=sub.name,
+        )
+
+    @final
+    async def handle_subs_v2(
+        self, scrape_item: ScrapeItem, video_filename: str, subtitles: Iterable[ISO639Subtitle]
+    ) -> None:
+        video_stem = Path(video_filename).stem
+        counter: Counter[str] = Counter()
+        async with aio.non_cancelling_taskgroup() as tg:
+            for sub in map(self.resolve_sub, subtitles):
+                counter[sub.lang_code] += 1
+                tg.create_task(
+                    self._handle_sub(
+                        scrape_item,
+                        video_stem,
+                        sub,
+                        track_id=counter[sub.lang_code],
+                    )
+                )
+
+    @final
+    async def _handle_sub(
+        self,
+        scrape_item: ScrapeItem,
+        video_stem: str,
+        sub: ResolvedISO639Subtitle,
+        track_id: int = 1,
+    ) -> None:
+        with self.catch_errors(sub.url):
+            ext = sub.ext or await self.sniff_ext(sub.url)
+            track_suffix = f".{track_id}" if track_id > 1 else ""
+            filename = f"{video_stem}.{sub.lang_code}{track_suffix}{ext}"
+            await self.handle_file(
+                sub.url,
+                scrape_item,
+                sub.name or filename,
+                ext,
+                custom_filename=self.get_filename_and_ext(filename).name,
+                frag=filename,
             )
 
     async def generic_m3u8(self, scrape_item: ScrapeItem, url: AbsoluteHttpURL | None = None) -> None:

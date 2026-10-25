@@ -7,7 +7,7 @@ import unicodedata
 from contextvars import ContextVar
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 from cyberdrop_dl.constants import FileExt
 from cyberdrop_dl.exceptions import FileNameError, InvalidExtensionError, NoExtensionError, PathTraversalError
@@ -39,6 +39,18 @@ class UnicodeCategory(StrEnum):
     PUNCTUATION = "P"
     SIMBOL = "S"
     SEPARATOR = "Z"
+
+
+class Filename(NamedTuple):
+    name: str
+    suffix: str
+
+    def as_path(self) -> Path:
+        return Path(self.name)
+
+    @property
+    def stem(self) -> str:
+        return self.name.removesuffix(self.suffix)
 
 
 class PathSanitizer:
@@ -121,7 +133,7 @@ def get_filename_and_ext(
     *,
     xenforo: bool = False,
     max_len: int | None = None,
-) -> tuple[str, str]:
+) -> Filename:
     filename_as_path = Path(remove_os_sep(filename))
 
     if not filename_as_path.suffix:
@@ -143,7 +155,7 @@ def get_filename_and_ext(
         raise InvalidExtensionError(str(filename_as_path))
 
     filename_as_path = Path(compose_filename(filename_as_path.stem, filename_as_path.suffix, max_len=max_len))
-    return filename_as_path.name, filename_as_path.suffix
+    return Filename(filename_as_path.name, filename_as_path.suffix)
 
 
 def remove_os_sep(filename: str) -> str:
