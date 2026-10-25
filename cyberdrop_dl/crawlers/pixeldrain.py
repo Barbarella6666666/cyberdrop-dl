@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
+from collections import deque
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, final, override
 
+from cyberdrop_dl import aio
 from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.crawlers.crawler import API, Crawler, DownloadConfig, SupportedDomains, SupportedPaths, auto_task_id
 from cyberdrop_dl.exceptions import ScrapeError
@@ -15,12 +16,14 @@ from cyberdrop_dl.utils import basic_auth
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from cyberdrop_dl.clients.response import AbstractResponse
     from cyberdrop_dl.url_objects import ScrapeItem
 
 
 @final
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class File:
     id: str
     name: str
@@ -31,15 +34,15 @@ class File:
     availability_message: str = ""
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class Folder:
     id: str
     title: str
-    files: list[File]
+    files: tuple[File, ...]
 
 
 @final
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class Node:
     type: Literal["file", "dir"]
     path: str
@@ -146,13 +149,14 @@ class PixelDrainCrawler(Crawler):
     async def fetch(self, scrape_item: ScrapeItem) -> None:
         if self.origin.host not in self.SUPPORTED_DOMAINS:
             raise ValueError
+
         match scrape_item.url.parts[1:]:
             case ["u", file_id]:
-                return await self.file(scrape_item, file_id)
+                await self.file(scrape_item, file_id)
             case ["l", folder_id]:
-                return await self.folder(scrape_item, folder_id)
+                await self.folder(scrape_item, folder_id)
             case ["d", *path] if path:
-                return await self.filesystem(scrape_item, "/".join(path))
+                await self.filesystem(scrape_item, "/".join(path))
             case _:
                 raise ValueError
 
@@ -185,17 +189,19 @@ class PixelDrainCrawler(Crawler):
 
         await self._files(scrape_item, files)
 
-    async def _files(self, scrape_item: ScrapeItem, files: list[File]) -> None:
+    async def _files(self, scrape_item: ScrapeItem, files: Sequence[File]) -> None:
         assert scrape_item.album_id
-        results = await self.get_album_results(scrape_item.album_id)
-        for file in files:
-            if self.check_album_results(self.api.download(file), results):
-                continue
+        downloaded = await self.get_completed_by_album(scrape_item.album_id)
+        sleep = aio.periodic_sleep(10)
+        async with self.new_task_group() as tg:
+            for file in files:
+                if self.api.download(file) in downloaded:
+                    continue
 
-            url = self.origin / "u" / file.id
-            new_scrape_item = scrape_item.create_child(url)
-            self.create_task(self._file_task(new_scrape_item, file))
-            scrape_item.add_children()
+                new_item = scrape_item.create_child(self.origin / "u" / file.id)
+                tg.create_task(self._file_task(new_item, file))
+                scrape_item.add_children()
+                await sleep()
 
     @error_handling_wrapper
     async def filesystem(self, scrape_item: ScrapeItem, path: str) -> None:
@@ -210,44 +216,42 @@ class PixelDrainCrawler(Crawler):
         if base_node.type == "file":
             fs.children = [base_node]
 
-        await self._filesystem(scrape_item, fs)
+        await self._walk_filesystem(scrape_item, fs)
 
-    async def _filesystem(self, scrape_item: ScrapeItem, fs: FileSystem) -> None:
+    async def _walk_filesystem(self, scrape_item: ScrapeItem, fs: FileSystem) -> None:
         assert scrape_item.album_id
-        results = await self.get_album_results(scrape_item.album_id)
+        downloaded = await self.get_completed_by_album(scrape_item.album_id)
+        sleep = aio.periodic_sleep(10)
+        subfolders: deque[str] = deque()
 
-        async def subfolder(new_item: ScrapeItem, path: str) -> None:
-            with self.catch_errors(new_item):
-                fs = await self.api.filesystem(path)
-                scrape_item.add_children(0)
-                walk_filesystem(fs)
-
-        def walk_filesystem(fs: FileSystem) -> None:
-            for node in fs.children:
-                if node.name == ".search_index.gz":
-                    continue
-
-                url = self.origin / "d" / node.path.removeprefix("/")
-                new_scrape_item = scrape_item.create_child(url)
-
-                if node.type == "file":
-                    if self.check_album_results(self.api.download(node), results):
+        async with self.new_task_group() as tg:
+            while True:
+                for node in fs.children:
+                    if node.name == ".search_index.gz":
                         continue
 
-                    subfolders = node.path.split("/")[2:-1]
-                    new_scrape_item.append_folders(*subfolders)
-                    tg.create_task(self._file_task(new_scrape_item, node))
+                    if node.type == "dir":
+                        subfolders.append(node.path)
+                        continue
 
-                elif node.type == "dir":
-                    tg.create_task(subfolder(new_scrape_item, node.path))
+                    if node.type != "file":
+                        self.log.warning("Unknown node type: %s", node)
+                        continue
 
-                else:
-                    self.raise_exc(new_scrape_item, f"Unknown node type: {node.type}")
+                    if self.api.download(node) in downloaded:
+                        continue
 
-                scrape_item.add_children()
+                    url = self.origin / "d" / node.path.removeprefix("/")
+                    new_item = scrape_item.create_child(url)
+                    leafs = node.path.split("/")[2:-1]
+                    new_item.append_folders(*leafs)
+                    tg.create_task(self._file_task(new_item, node))
+                    await sleep()
 
-        async with asyncio.TaskGroup() as tg:
-            walk_filesystem(fs)
+                if not subfolders:
+                    break
+
+                fs = await self.api.filesystem(subfolders.popleft())
 
     @error_handling_wrapper
     async def file(self, scrape_item: ScrapeItem, file_id: str) -> None:
@@ -337,7 +341,7 @@ class PixelDrainAPI(API):
         return (self.origin / "api/filesystem" / file.path.removeprefix("/")).with_query("attach")
 
 
-def _filter_files(files: list[File], fragment: str) -> list[File]:
+def _filter_files(files: Sequence[File], fragment: str) -> Sequence[File]:
     if fragment.startswith(prefix := "item="):
         item_idx = int(fragment.removeprefix(prefix))
         return [files[item_idx]]
