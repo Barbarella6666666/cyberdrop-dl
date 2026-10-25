@@ -33,6 +33,7 @@ class CrawlerTestCase:
     domain: str
     url: str
     results: list[Result]
+    sort_by: str = "url"
     args: tuple[str, ...] = ()
     description: str | None = None
     fail: bool | str | int = False

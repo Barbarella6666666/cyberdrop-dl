@@ -101,10 +101,20 @@ class _NOT_NONE:  # noqa: N801, PLW1641
 NOT_NONE = _NOT_NONE()
 
 
+def _sort_expected(test_case: test_cases.CrawlerTestCase):
+
+    def gen():
+        for idx, case in enumerate(test_case.results, 1):
+            yield (case["url"], idx), case
+
+    return sorted(gen(), key=lambda x: x[1][test_case.sort_by])
+
+
 def _validate_results(crawler: Crawler, test_case: test_cases.CrawlerTestCase, results: list[MediaItem]) -> None:  # noqa: C901
-    expected_results = dict(sorted(((x["url"], idx), x) for idx, x in enumerate(test_case.results, 1)))
+    expected_results = _sort_expected(test_case)
+    results = sorted(results, key=lambda x: getattr(x, test_case.sort_by))
     origin = getattr(crawler, "PRIMARY_URL", AbsoluteHttpURL("https://google.com"))
-    for (index, expected), media_item in zip(expected_results.items(), results, strict=False):
+    for (index, expected), media_item in zip(expected_results, results, strict=False):
         for attr_name, expected_value in expected.items():
             result_value = getattr(media_item, attr_name)
             if isinstance(result_value, Path):

@@ -362,7 +362,7 @@ class Network(ConfigGroup):
     proxy: Annotated[FalsyAsNone[HttpURL], Parameter(alias=("http-proxy"))] = None
     "HTTP/HTTPS proxy"
 
-    rate_limit: PositiveFloat = Field(25.0, le=MAX_RATE_LIMIT)
+    rate_limit: PositiveFloat = Field(default=25.0, le=MAX_RATE_LIMIT)
     "Max number of requests per second (only used while scraping)"
 
     connection_timeout: PositiveFloat = 15
