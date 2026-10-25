@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 
+from cyberdrop_dl import aio
 from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.crawlers.crawler import Crawler, SupportedPaths, auto_task_id
 from cyberdrop_dl.exceptions import ScrapeError
@@ -38,11 +39,11 @@ class Author(DictDataclass):
 class Post(DictDataclass):
     id: str
     title: str
-    play: str
     create_time: int
     size: int
     author: Author
     music_info: MusicInfo
+    play: str | None = None
     is_src_quality: bool = False
     images: list[str] = dataclasses.field(default_factory=list)
     canonical_url: AbsoluteHttpURL = dataclasses.field(default_factory=AbsoluteHttpURL)
@@ -68,8 +69,8 @@ class Post(DictDataclass):
 class MusicInfo(DictDataclass):
     title: str
     id: str
-    play: str
     original: bool
+    play: str | None = None
 
     @property
     def canonical_url(self) -> AbsoluteHttpURL:
@@ -151,14 +152,18 @@ class TikTokCrawler(Crawler):
     @error_handling_wrapper
     async def profile(self, scrape_item: ScrapeItem, unique_id: str) -> None:
         scrape_item.setup_as_profile("")
-        async for posts in self._profile_post_pager(unique_id):
-            for post in posts:
-                new_scrape_item = scrape_item.create_child(post.canonical_url)
-                if not post.images and self.download_src_quality_videos:
-                    self.create_eager_task(self.src_quality_media_task(new_scrape_item, post.id, post))
-                else:
-                    self._handle_post(new_scrape_item, post)
-                scrape_item.add_children()
+        sleep = aio.periodic_sleep(10)
+        async with self.new_task_group() as tg:
+            async for posts in self._profile_post_pager(unique_id):
+                for post in posts:
+                    new_item = scrape_item.create_child(post.canonical_url)
+                    if not post.images and self.download_src_quality_videos:
+                        tg.create_task(self.src_quality_media_task(new_item, post.id, post))
+                    else:
+                        tg.create_task(self._post_task(new_item, post))
+
+                    scrape_item.add_children()
+                    await sleep()
 
     @error_handling_wrapper
     async def src_quality_media(self, scrape_item: ScrapeItem, media_id: str, post: Post | None = None) -> None:
@@ -171,7 +176,7 @@ class TikTokCrawler(Crawler):
         json_data = await self._get_task_result(task_id)
         post = Post.from_dict(json_data["detail"])
         post.is_src_quality = True
-        self._handle_post(scrape_item, post)
+        await self._post(scrape_item, post)
 
     src_quality_media_task = auto_task_id(src_quality_media)
 
@@ -196,69 +201,71 @@ class TikTokCrawler(Crawler):
         api_url = _API_URL.with_query(url=media_id)
         json_data = await self._api_request(api_url)
         post = Post.from_dict(json_data)
-        self._handle_post(scrape_item, post)
+        await self._post(scrape_item, post)
 
-    def _handle_post(self, scrape_item: ScrapeItem, post: Post) -> None:
+    async def _post(self, scrape_item: ScrapeItem, post: Post) -> None:
         scrape_item.url = post.canonical_url
         title = self.create_title(post.author.unique_id, post.id)
         scrape_item.append_folders(title)
         post_title = self.create_separate_post_title(post.title, post.id, post.create_time)
         scrape_item.setup_as_album(post_title, album_id=post.id)
         scrape_item.uploaded_at = post.create_time
-        self._handle_images(scrape_item, post)
-        self._handle_audio(scrape_item, post)
-        self._handle_video(scrape_item, post)
-
-    def _handle_images(self, scrape_item: ScrapeItem, post: Post) -> None:
-        for index, url in enumerate(post.images):
-            link = self.parse_url(url, trim=False)
-            img_url = post.canonical_url / str(index)
-            filename = self.create_custom_filename(f"{post.id}_img{str(index).zfill(3)}", link.suffix)
-            self.create_eager_task(
-                self.handle_file(
-                    img_url,
-                    scrape_item,
-                    filename,
-                    link.suffix,
-                    debrid_link=link,
-                )
-            )
-            scrape_item.add_children()
-
-    def _handle_audio(self, scrape_item: ScrapeItem, post: Post) -> None:
-        audio, ext = post.music_info, ".mp3"
-        audio_url = self.parse_url(audio.play, trim=False)
-        filename = self.create_custom_filename(audio.title, ext, file_id=audio.id)
-        self.create_eager_task(
-            self.handle_file(
-                audio.canonical_url,
-                scrape_item,
-                audio.title + ext,
-                ext,
-                debrid_link=audio_url,
-                custom_filename=filename,
-            )
+        await aio.gather(
+            self._handle_images(scrape_item, post),
+            self._handle_audio(scrape_item, post),
+            self._handle_video(scrape_item, post),
+            fail_fast=False,
         )
-        scrape_item.add_children()
 
-    def _handle_video(self, scrape_item: ScrapeItem, post: Post) -> None:
-        if not (post.size or post.play) or post.images:
+    _post_task = auto_task_id(error_handling_wrapper(_post))
+
+    async def _handle_images(self, scrape_item: ScrapeItem, post: Post) -> None:
+        async with self.new_task_group() as tg:
+            for index, url in enumerate(post.images):
+                link = self.parse_url(url, trim=False)
+                img_url = post.canonical_url / str(index)
+                filename = self.create_custom_filename(f"{post.id}_img{str(index).zfill(3)}", link.suffix)
+                tg.create_task(
+                    self.handle_file(
+                        img_url,
+                        scrape_item,
+                        filename,
+                        link.suffix,
+                        debrid_link=link,
+                    )
+                )
+
+    async def _handle_audio(self, scrape_item: ScrapeItem, post: Post) -> None:
+        audio = post.music_info
+        if not audio.play:
+            return
+
+        audio_url = self.parse_url(audio.play, trim=False)
+        filename = self.create_custom_filename(audio.title, ext := ".mp3", file_id=audio.id)
+        await self.handle_file(
+            audio.canonical_url,
+            scrape_item,
+            audio.title + ext,
+            ext,
+            debrid_link=audio_url,
+            custom_filename=filename,
+        )
+
+    async def _handle_video(self, scrape_item: ScrapeItem, post: Post) -> None:
+        if not (post.size and post.play):
             return
 
         video_url = self.parse_url(post.play, trim=False)
         ext = ".mp4"
         custom_filename = f"{post.id}{'_original'}{ext}" if post.is_src_quality else None
-        self.create_eager_task(
-            self.handle_file(
-                scrape_item.url,
-                scrape_item,
-                post.id + ext,
-                ext,
-                debrid_link=video_url,
-                custom_filename=custom_filename,
-            )
+        await self.handle_file(
+            scrape_item.url,
+            scrape_item,
+            post.id + ext,
+            ext,
+            debrid_link=video_url,
+            custom_filename=custom_filename,
         )
-        scrape_item.add_children()
 
     @override
     def _prepare_media_item(self, media_item: MediaItem) -> None:
