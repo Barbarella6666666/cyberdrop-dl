@@ -917,8 +917,9 @@
           "default": null
         },
         "rate_limit": {
-          "default": 25,
+          "default": 25.0,
           "exclusiveMinimum": 0,
+          "maximum": 10000.0,
           "title": "Rate Limit",
           "type": "number"
         },

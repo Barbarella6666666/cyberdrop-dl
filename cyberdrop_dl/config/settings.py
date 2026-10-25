@@ -27,6 +27,7 @@ from cyberdrop_dl.models.types import (
 from cyberdrop_dl.models.validators import strings
 
 ALIASES: dict[str, str] = {}
+MAX_RATE_LIMIT = 10000.0
 
 
 def _alias(name: str, *extras: str, flag: str = "enabled") -> Parameter:
@@ -361,7 +362,7 @@ class Network(ConfigGroup):
     proxy: Annotated[FalsyAsNone[HttpURL], Parameter(alias=("http-proxy"))] = None
     "HTTP/HTTPS proxy"
 
-    rate_limit: PositiveFloat = 25
+    rate_limit: PositiveFloat = Field(25.0, le=MAX_RATE_LIMIT)
     "Max number of requests per second (only used while scraping)"
 
     connection_timeout: PositiveFloat = 15

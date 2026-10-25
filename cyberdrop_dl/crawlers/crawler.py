@@ -18,6 +18,7 @@ from cyberdrop_dl import aio
 from cyberdrop_dl.cache import TTLCacheAdapter
 from cyberdrop_dl.clients.downloads import IGNORE_CONTENT_TYPE
 from cyberdrop_dl.clients.http import HTTPClient, HTTPConfig, HTTPContext, HTTPMixin
+from cyberdrop_dl.config.settings import MAX_RATE_LIMIT
 from cyberdrop_dl.constants import USE_RETRY_PATH, FileExt, HttpMethod
 from cyberdrop_dl.crawlers import ALLOW_NO_EXT, SKIP_DOWNLOAD, Registry
 from cyberdrop_dl.crawlers._hls import HLSMixin
@@ -193,7 +194,7 @@ class DownloadConfig(ConfigDataclass):
 
 
 @URLConfig(trim=True, allow_empty_path=False, ignore_fragment=True)
-@HTTPConfig(rate_limit=(25, 1))
+@HTTPConfig(rate_limit=(MAX_RATE_LIMIT, 1))
 @DownloadConfig(slots=None, server_lock=False)
 class Crawler(HTTPMixin, HLSMixin, ABC):
     __dl_config__: ClassVar[DownloadConfig]
@@ -1106,7 +1107,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
             )
 
 
-@HTTPConfig(rate_limit=(25, 1))
+@Crawler.__http_config__
 class API(HTTPMixin, ABC):
     PRIMARY_URL: AbsoluteHttpURL = AbsoluteHttpURL()
     # We inherit from ABC to force type checkers to recognize attributes defined in __post_init__ as if they were defined in __init__
