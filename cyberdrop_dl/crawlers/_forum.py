@@ -461,7 +461,8 @@ class HTMLMessageBoardCrawler(MessageBoardCrawler, is_abc=True):
         scrape_item.append_folders(post_title)
         stats: dict[str, int] = {}
 
-        async with self.new_task_group() as tg:
+        sleep = aio.periodic_sleep(10)
+        async with aio.non_cancelling_taskgroup() as tg:
             for scraper in (
                 self._attachments,
                 self._images,
@@ -475,6 +476,7 @@ class HTMLMessageBoardCrawler(MessageBoardCrawler, is_abc=True):
                     stats[scraper_name] = stats.get(scraper_name, 0) + 1
                     tg.create_task(self.process_child(scrape_item, url, embeds="embeds" in scraper_name))
                     scrape_item.add_children()
+                    await sleep()
 
         if stats:
             self.log.info(f"post #{post.id} {stats = }")

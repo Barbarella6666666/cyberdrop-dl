@@ -190,7 +190,7 @@ class VKVideoCrawler(VKBaseCrawler, wiki_site="VKVideo"):
 
     async def _iter_videos(self, scrape_item: ScrapeItem, videos: AsyncIterable[Video]) -> None:
         sleep = aio.periodic_sleep(10)
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             async for video in videos:
                 url = self.PRIMARY_URL / video.web_path
                 if video.access_key:
@@ -410,18 +410,20 @@ class VKCrawler(VKBaseCrawler, wiki_site="VK"):
                 return
 
         scrape_item.setup_as_profile(self.create_title(owner.full_name))
-        async with self.new_task_group() as tg:
+        sleep = aio.periodic_sleep(10)
+        async with aio.non_cancelling_taskgroup() as tg:
             async for post in self.api.get_wall(owner_id, filter_=self.config.crawlers.vk.wall_filter):
                 url = self.PRIMARY_URL / f"wall{post.owner_id}_{post.id}"
                 tg.create_task(self._post_task(scrape_item.create_child(url), post))
                 scrape_item.add_children()
+                await sleep()
 
     @error_handling_wrapper
     async def _post(self, scrape_item: ScrapeItem, post: Post) -> None:  # noqa: C901
         title = self.create_separate_post_title(None, str(post.slug), post.date)
         scrape_item.setup_as_post(title)
-        async with self.new_task_group() as tg:
-            sleep = aio.periodic_sleep(10)
+        sleep = aio.periodic_sleep(10)
+        async with aio.non_cancelling_taskgroup() as tg:
             tg.create_task(self.write_metadata(scrape_item, f"wall{post.owner_id}_{post.id}", post))
             for attach in post.attachments:
                 type_ = attach["type"]
@@ -531,7 +533,7 @@ class VKCrawler(VKBaseCrawler, wiki_site="VK"):
         title = self.create_title(f"{play.title or play.slug} [playlist]", play.slug)
         scrape_item.append_folders(title)
 
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             tg.create_task(self.write_metadata(scrape_item, play.web_path, play))
             if play.thumb:
                 tg.create_task(self.direct_file(scrape_item, play.thumb.best()))
@@ -568,11 +570,13 @@ class VKCrawler(VKBaseCrawler, wiki_site="VK"):
         )
 
     async def _iter_photos_legacy(self, scrape_item: ScrapeItem, list_id: str) -> None:
-        async with self.new_task_group() as tg:
+        sleep = aio.periodic_sleep(10)
+        async with aio.non_cancelling_taskgroup() as tg:
             async for photo in self.api.legacy.get_photos(list_id):
                 new_item = scrape_item.create_child(self.PRIMARY_URL / photo.web_path)
                 tg.create_task(self._photo_task(new_item, photo))
                 scrape_item.add_children()
+                await sleep()
 
     _file_task = auto_task_id(_file)
     _post_task = auto_task_id(_post)

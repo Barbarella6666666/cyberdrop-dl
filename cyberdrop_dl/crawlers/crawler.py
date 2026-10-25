@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     import datetime as dt
     import http.cookies
     from collections.abc import (
-        AsyncGenerator,
         AsyncIterator,
         Awaitable,
         Callable,
@@ -419,6 +418,8 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     def create_eager_task(self, coro: Coroutine[Any, Any, Any]) -> None:
         """Run this coro as soon as possible"""
         _ = self._task_mngr.scrape.create_eager_task(coro)
+
+    new_task_group: Final = staticmethod(aio.non_cancelling_taskgroup)
 
     @abstractmethod
     async def fetch(self, scrape_item: ScrapeItem) -> None:
@@ -962,39 +963,6 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         with self.catch_errors(url):
             filename, ext = self.get_filename_and_ext(url.name or url.parent.name, assume_ext=assume_ext)
             await self.handle_file(url, scrape_item, filename, ext)
-
-    @final
-    @contextlib.asynccontextmanager
-    async def new_task_group(self) -> AsyncGenerator[aio.EagerTaskGroup]:
-        """A taskgroup that does not cancel its tasks if an exception is raised within its `async with` context
-
-        Exceptions raised within a task will still cancel all tasks
-
-        This is mostly just to catch `MaxChildrenError`"""
-
-        context_exc = None
-        task_exc = None
-
-        try:
-            async with aio.EagerTaskGroup() as tg:
-                try:
-                    yield tg
-                except Exception as e:  # noqa: BLE001
-                    context_exc = e
-        except ExceptionGroup as eg:
-            if context_exc is None:
-                raise
-            task_exc = eg
-
-        try:
-            if task_exc is not None and context_exc is not None:
-                raise ExceptionGroup(task_exc.message, (*task_exc.exceptions, context_exc)) from None
-            if task_exc is not None:
-                raise task_exc from None
-            if context_exc is not None:
-                raise context_exc from None
-        finally:
-            context_exc = task_exc = None
 
     @final
     @classmethod

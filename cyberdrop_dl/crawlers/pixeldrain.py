@@ -193,7 +193,7 @@ class PixelDrainCrawler(Crawler):
         assert scrape_item.album_id
         downloaded = await self.get_completed_by_album(scrape_item.album_id)
         sleep = aio.periodic_sleep(10)
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             for file in files:
                 if self.api.download(file) in downloaded:
                     continue
@@ -224,7 +224,7 @@ class PixelDrainCrawler(Crawler):
         sleep = aio.periodic_sleep(10)
         subfolders: deque[str] = deque()
 
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             while True:
                 for node in fs.children:
                     if node.name == ".search_index.gz":

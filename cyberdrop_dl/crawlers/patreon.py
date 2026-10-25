@@ -9,7 +9,7 @@ from typing_extensions import ReadOnly
 
 from cyberdrop_dl import aio
 from cyberdrop_dl.clients.http import HTTPConfig
-from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths
+from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths, auto_task_id
 from cyberdrop_dl.exceptions import MaxChildrenError, NoExtensionError, ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import css, extr_text, next_js, traversal
@@ -152,7 +152,7 @@ class PatreonCrawler(Crawler):
             scrape_item.add_children()
             await sleep()
 
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             for media in medias:
                 if media.id in seen_media_ids:
                     continue
@@ -244,15 +244,17 @@ class PatreonCrawler(Crawler):
     async def campaign(self, scrape_item: ScrapeItem, campaign_id: str) -> None:
         scrape_item.setup_as_profile("")
         sleep = aio.periodic_sleep(10)
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             async for resp in self.api.posts(campaign_id):
                 included = _flatten_included(resp["included"])
                 for post in resp["data"]:
                     post = _flatten_post(post)
                     new_item = scrape_item.create_child(self.parse_url(post["url"]))
-                    tg.create_task(self._post(new_item, post, included))
+                    tg.create_task(self._post_task(new_item, post, included))
                     scrape_item.add_children()
                     await sleep()
+
+    _post_task = auto_task_id(_post)
 
 
 class LazyLogMedia:

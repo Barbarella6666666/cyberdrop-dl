@@ -54,7 +54,8 @@ class PicDropCrawler(Crawler):
         else:
             files = self.api.files(gallery.path)
 
-        async with self.new_task_group() as tg:
+        sleep = aio.periodic_sleep(10)
+        async with aio.non_cancelling_taskgroup() as tg:
             async for file in files:
                 url = scrape_item.url.with_query(file=file.key)
                 if url in downloaded:
@@ -63,6 +64,7 @@ class PicDropCrawler(Crawler):
                 new_item = scrape_item.create_child(scrape_item.url.with_query(file=file.key))
                 tg.create_task(self._file(new_item, file, gallery.path))
                 scrape_item.add_children()
+                await sleep()
 
     @error_handling_wrapper
     async def _file(self, scrape_item: ScrapeItem, file: File, path: str) -> None:

@@ -153,7 +153,7 @@ class TikTokCrawler(Crawler):
     async def profile(self, scrape_item: ScrapeItem, unique_id: str) -> None:
         scrape_item.setup_as_profile("")
         sleep = aio.periodic_sleep(10)
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             async for posts in self._profile_post_pager(unique_id):
                 for post in posts:
                     new_item = scrape_item.create_child(post.canonical_url)
@@ -220,7 +220,7 @@ class TikTokCrawler(Crawler):
     _post_task = auto_task_id(error_handling_wrapper(_post))
 
     async def _handle_images(self, scrape_item: ScrapeItem, post: Post) -> None:
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             for index, url in enumerate(post.images):
                 link = self.parse_url(url, trim=False)
                 img_url = post.canonical_url / str(index)

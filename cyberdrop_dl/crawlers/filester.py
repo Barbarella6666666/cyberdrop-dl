@@ -91,7 +91,7 @@ class FilesterCrawler(Crawler):
         downloaded = await self.get_completed_by_album(album_id)
         sleep = aio.periodic_sleep(10)
 
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             async for soup in pages:
                 for on_click in unique(css.iselect(soup, Selector.FILES, "onclick")):
                     web_url = self.parse_url(extr_text(on_click, "'", "'"), self.origin)

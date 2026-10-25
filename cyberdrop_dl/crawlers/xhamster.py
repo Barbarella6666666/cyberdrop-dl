@@ -171,13 +171,15 @@ class XhamsterCrawler(Crawler):
                 for img in Gallery.parse(initials).images:
                     yield img
 
-        async with self.new_task_group() as tg:
+        sleep = aio.periodic_sleep(10)
+        async with aio.non_cancelling_taskgroup() as tg:
             async for index, img in aio.aenumerate(images(), start=1):
                 if img.src in downloaded:
                     continue
 
                 tg.create_task(self._image(scrape_item.create_child(img.url), img, index))
                 scrape_item.add_children()
+                await sleep()
 
     @error_handling_wrapper
     async def _image(self, scrape_item: ScrapeItem, img: Image, index: int) -> None:

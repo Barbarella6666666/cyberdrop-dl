@@ -135,7 +135,7 @@ class BunkrCrawler(Crawler):
         sleep = aio.periodic_sleep(10)
 
         downloaded = await self.get_completed_by_album(album_id)
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             for file in self._parse_files(css.select_text(soup, Selector.ALBUM_FILES)):
                 # This is not the real src but our custom __db_path__ will resolve it to the same db entry
                 if self.parse_url(file.cdnEndpoint) in downloaded:

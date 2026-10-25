@@ -105,7 +105,7 @@ class UpFileCrawler(Crawler):
     async def _walk_nodes(self, scrape_item: ScrapeItem, folder: Folder, path: str) -> None:
         subfolders: deque[str] = deque()
         sleep = aio.periodic_sleep(10)
-        async with self.new_task_group() as tg:
+        async with aio.non_cancelling_taskgroup() as tg:
             while True:
                 nodes = folder.items
                 leafs = tuple(node.name for node in folder.breadcrumb[1:])
