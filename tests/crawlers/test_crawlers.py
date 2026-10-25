@@ -12,7 +12,7 @@ import tests
 from cyberdrop_dl.crawlers.crawler import compose_ep_name
 from cyberdrop_dl.scrape_mapper import ScrapeMapper
 from cyberdrop_dl.url_objects import AbsoluteHttpURL, MediaItem, ScrapeItem
-from cyberdrop_dl.utils import parse_url
+from cyberdrop_dl.utils import json, parse_url
 
 from . import test_cases
 
@@ -109,6 +109,8 @@ def _validate_results(crawler: Crawler, test_case: test_cases.CrawlerTestCase, r
             result_value = getattr(media_item, attr_name)
             if isinstance(result_value, Path):
                 result_value = result_value.as_posix()
+            if attr_name == "metadata" and result_value:
+                result_value = json.loads(json.dumps(result_value))
 
             match expected_value:
                 case type():
