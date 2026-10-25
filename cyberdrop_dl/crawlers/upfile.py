@@ -70,7 +70,7 @@ def _decrypt(media_key: str, content: bytes, key: bytes) -> bytes:
 class UpFileCrawler(Crawler):
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = {
         "Share": "/public/<path>...",
-        "**NOTES**": "Does NOT support subfolders",
+        "Share subfolder": "/public/<path>...?f=<subfolder_id>",
     }
     DOMAIN: ClassVar[str] = "upfile.top"
     PRIMARY_URL: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://upfile.top")
@@ -82,43 +82,50 @@ class UpFileCrawler(Crawler):
     async def fetch(self, scrape_item: ScrapeItem) -> None:
         match scrape_item.url.parts[1:]:
             case ["public", _, *_]:
-                await self.share(scrape_item, scrape_item.url.path.removeprefix("/public/"))
+                await self.share(
+                    scrape_item,
+                    path=scrape_item.url.path.removeprefix("/public/"),
+                    subfolder=scrape_item.url.query.get("f"),
+                )
             case _:
                 raise ValueError
 
     @error_handling_wrapper
-    async def share(self, scrape_item: ScrapeItem, path: str) -> None:
+    async def share(self, scrape_item: ScrapeItem, path: str, subfolder: str | None = None) -> None:
         await self.api.boot(path)
-        folder = await self.api.list(path)
-        scrape_item.setup_as_album(self.create_title(folder.name, folder.id), album_id=folder.id)
+        folder = await self.api.list(path, subfolder)
+        root = folder.breadcrumb[0]
+        scrape_item.setup_as_album(self.create_title(root.name, root.id), album_id=root.id)
         await self._walk_nodes(scrape_item, folder, path)
 
     async def _walk_nodes(self, scrape_item: ScrapeItem, folder: Folder, path: str) -> None:
-        subfolders: deque[dict[str, Any]] = deque()
-        nodes = folder.items
+        subfolders: deque[str] = deque()
+        sleep = aio.periodic_sleep(10)
+        async with self.new_task_group() as tg:
+            while True:
+                nodes = folder.items
+                leafs = tuple(node.name for node in folder.breadcrumb[1:])
+                for node in nodes:
+                    if node["type"] == "folder":
+                        subfolders.append(node["id"])
+                        continue
 
-        while True:
-            for node in nodes:
-                if node["type"] == "folder":
-                    self.log.warning("Subfolder ignored: %s", node)
-                    subfolders.append(node)
-                    continue
+                    if node["type"] != "file":
+                        self.log.warning("Unknown node type: %s", node)
+                        continue
 
-                if node["type"] != "file":
-                    self.log.warning("Unknown node type: %s", node)
-                    continue
+                    file = File.parse(node, path=path)
+                    url = scrape_item.url / "m" / file.id
+                    new_item = scrape_item.create_child(url)
+                    new_item.append_folders(*leafs)
+                    tg.create_task(self._file(new_item, file))
+                    scrape_item.add_children()
+                    await sleep()
 
-                file = File.parse(node, path=path)
-                url = scrape_item.url / "m" / file.id
-                new_item = scrape_item.create_child(url)
-                self.create_eager_task(self._file(new_item, file))
-                scrape_item.add_children()
+                if not subfolders:
+                    return
 
-            if not subfolders:
-                return
-
-            raise ScrapeError(422, f"Subfolders are not supported:\n {tuple(subfolders)}")
-            nodes = (await self.api.list(subfolders.popleft())).items
+                folder = await self.api.list(path, subfolder=subfolders.popleft())
 
     @error_handling_wrapper
     async def _file(self, scrape_item: ScrapeItem, file: File) -> None:
@@ -163,22 +170,24 @@ class UpFileCrawler(Crawler):
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class File:
+class Node:
     id: str
-    path: str
-    type: Literal["file"]
     name: str
-    thumb: bool
-    status: str
-    kind: str
-
     parse = classmethod(deserialize)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class Folder:
-    id: str
-    name: str
+class File(Node):
+    path: str
+    type: Literal["file"]
+    thumb: bool
+    status: str
+    kind: str
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class Folder(Node):
+    breadcrumb: tuple[Node, ...]
     items: list[dict[str, Any]]
     type: Literal["folder"] = "folder"
 
@@ -208,10 +217,16 @@ class UpFileAPI(API):
         init = await self.request_json(self.ENTRYPOINT / path / "init", "POST", json={}, headers=self.headers)
         _KEY.set(base64.b64decode(init["key"]))
 
-    async def list(self, path: str) -> Folder:
+    async def list(self, path: str, subfolder: str | None = None) -> Folder:
         url = self.ENTRYPOINT / path / "list"
+        if subfolder:
+            url = url.update_query(folder=subfolder)
         data = await self.request_json(url, headers=self.headers)
-        return deserialize(Folder, data["folder"], items=data["items"])
+        return Folder.parse(
+            data["folder"],
+            items=data["items"],
+            breadcrumb=tuple(map(Node.parse, data["breadcrumb"])),
+        )
 
     async def video(self, path: str, media_id: str) -> VideoMeta:
         play = self.ENTRYPOINT / path / "play"
