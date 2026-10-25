@@ -35,14 +35,19 @@ class UpFileDownloader(Downloader):
     async def _download_file(self, media_item: MediaItem) -> bool | None:
         downloaded = await super()._download_file(media_item)
         if downloaded:
-            key, media_key = _get_keys(media_item.real_url)
+            key = _KEY.get()
+            media_key = _build_media_key(media_item.real_url, _MEDIA_ID.get())
+            UpFileCrawler.get_logger().debug(
+                "Decrypting content for %s :\n%s",
+                media_item.real_url,
+                {"key": key, "media_key": media_key},
+            )
             content = await aio.read_bytes(media_item.path)
             await aio.write_bytes(media_item.path, await _decrypt(media_key, content, key))
         return downloaded
 
 
-def _get_keys(url: AbsoluteHttpURL) -> tuple[bytes, str]:
-    key, media_id = _KEY.get(), _MEDIA_ID.get()
+def _build_media_key(url: AbsoluteHttpURL, media_id: str) -> str:
     match url.parts[-2:]:
         case [_, "vinit"]:
             media_key = f"init:{media_id}"
@@ -55,8 +60,7 @@ def _get_keys(url: AbsoluteHttpURL) -> tuple[bytes, str]:
         case _:
             raise ValueError(f"Unknown media URL {url}")
 
-    UpFileCrawler.get_logger().debug("Decrypting content for file %s, key = %s, media_key = %s", url, key, media_key)
-    return key, media_key
+    return media_key
 
 
 @aio.to_thread
@@ -209,11 +213,8 @@ class UpFileAPI(API):
         return {"x-pt": _PT.get(), "cache": "no-store"}
 
     async def boot(self, path: str) -> None:
-        url = self.PRIMARY_URL / "public" / path
-        html = await self.request_text(url)
-        soup = await css.asoup(html, parse_only="script")
-        boot = json.loads(css.select_text(soup, "#boot"))
-        _PT.set(boot["pt"])
+        html = await self.request_text(self.PRIMARY_URL / "public" / path)
+        _PT.set(await _extract_boot_token(html))
         init = await self.request_json(self.ENTRYPOINT / path / "init", "POST", json={}, headers=self.headers)
         _KEY.set(base64.b64decode(init["key"]))
 
@@ -232,6 +233,13 @@ class UpFileAPI(API):
         play = self.ENTRYPOINT / path / "play"
         data = await self.request_json(play, "POST", json={"id": media_id}, headers=self.headers)
         return deserialize(VideoMeta, meta := data["meta"], codecs=Codecs.parse(meta["codecs"]))
+
+
+@aio.to_thread
+def _extract_boot_token(html: str) -> str:
+    soup = css.soup(html, parse_only="script")
+    boot = json.loads(css.select_text(soup, "#boot"))
+    return boot["pt"]
 
 
 def _create_m3u8(url: AbsoluteHttpURL, segments: int, duration: int) -> M3U8:
