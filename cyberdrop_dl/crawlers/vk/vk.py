@@ -26,7 +26,7 @@ from cyberdrop_dl.crawlers.vk.types import (
 from cyberdrop_dl.exceptions import DownloadError, ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import b64_pad
-from cyberdrop_dl.utils._url import remove_query_params
+from cyberdrop_dl.utils._url import is_ip_address, remove_query_params
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
 if TYPE_CHECKING:
@@ -83,7 +83,20 @@ INNER_PAGES = {
 _PAGE_REGEX = rf"^(?P<type>{'|'.join(map(re.escape, _PAGES_TYPES))})(?P<owner_id>-?\d+)(?:_(?P<item_id>\d+))?"
 
 
-@Crawler.db_path_builder("path_qs")
+def remove_tracking_params(url: AbsoluteHttpURL) -> AbsoluteHttpURL:
+    return url.without_query_params("pl", "fromTrackCode")
+
+
+def remove_ip_params(url: AbsoluteHttpURL) -> AbsoluteHttpURL:
+    return url.with_query(
+        sorted(
+            (k, v)
+            for k, v in url.query.items()
+            if k not in {"tkn", "urls"} and not is_ip_address(v) and not is_ip_address(k)
+        )
+    )
+
+
 class VKBaseCrawler(Crawler, is_abc=True):
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = {
         "Video": (
@@ -97,6 +110,23 @@ class VKBaseCrawler(Crawler, is_abc=True):
     FOLDER_DOMAIN: ClassVar[str] = "VK"
     DEFAULT_POST_TITLE_FORMAT: ClassVar[str] = "{date} [{id}]"
 
+    @staticmethod
+    @override
+    def __db_path__(url: AbsoluteHttpURL, /) -> str:
+        url = remove_ip_params(remove_tracking_params(url))
+        query = url.query
+        match url.parts[1:]:
+            case ["getVideoPreview" as thumb, *_]:
+                return f"/{thumb}?id={url.query['id']}"
+            case [] | [""] if (sub_id := query.get("subId")) and (vid := query.get("id")):
+                return f"vksubtitle://{VKVideoCrawler.PRIMARY_URL.host}?vid={vid}&subId={sub_id}"
+            case [slug] if re.match(_PAGE_REGEX, slug):
+                return remove_query_params(url, keep=("list",)).path_qs
+            case ["s", "v1", *__]:
+                return url.path_qs
+            case _:
+                return str(url)
+
     def __post_init__(self) -> None:
         for host in self.SUPPORTED_DOMAINS:
             self.update_cookies(
@@ -108,9 +138,7 @@ class VKBaseCrawler(Crawler, is_abc=True):
     @classmethod
     @override
     def transform_url(cls, url: AbsoluteHttpURL) -> AbsoluteHttpURL:
-        url = full_res_img(
-            super().transform_url(url).without_query_params("pl", "fromTrackCode")
-        )  # TODO: support playlists
+        url = full_res_img(remove_tracking_params(super().transform_url(url)))  # TODO: support playlists
 
         match url.parts[1:]:
             case ["video_ext.php"] if (owner_id := url.query.get("oid")) and (vid := url.query.get("id")):
@@ -145,14 +173,6 @@ class VKVideoCrawler(VKBaseCrawler, wiki_site="VKVideo"):
     }
     SUPPORTED_DOMAINS: ClassVar[SupportedDomains] = "vkvideo.ru", "vkvideo.com"
     PRIMARY_URL: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://vkvideo.com")
-
-    @staticmethod
-    @override
-    def __db_path__(url: AbsoluteHttpURL, /) -> str:
-        url = url.without_query_params("tkn")
-        if url.parts[1].startswith(("video", "clip", "photo")):
-            url = remove_query_params(url, keep=("list",))
-        return url.path_qs
 
     async def fetch(self, scrape_item: ScrapeItem) -> None:
         match scrape_item.url.parts[1:]:
@@ -236,22 +256,24 @@ class VKVideoCrawler(VKBaseCrawler, wiki_site="VKVideo"):
         else:
             debrid_url = best_fmt.url
 
+        filename = self.create_custom_filename(
+            title,
+            ext := ".mp4",
+            file_id=video.slug,
+            resolution=info.resolution if info else best_fmt.height,
+        )
         await self.handle_file(
             scrape_item.url,
             scrape_item,
             title,
-            ext := ".mp4",
+            ext,
             m3u8=m3u8,
-            custom_filename=self.create_custom_filename(
-                title,
-                ext,
-                file_id=video.slug,
-                resolution=info.resolution if info else best_fmt.height,
-            ),
+            custom_filename=filename,
             thumbnail=video.thumb,
             debrid_link=debrid_url,
             metadata=video,
         )
+        await self.handle_subs_v2(scrape_item, filename, video.subs)
 
 
 @URLConfig(allow_empty_path=True)

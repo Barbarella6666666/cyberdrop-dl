@@ -100,3 +100,14 @@ def _is_absolute_http_url(url: yarl.URL) -> TypeIs[AbsoluteHttpURL]:
 
 def remove_query_params[T: yarl.URL](url: T, keep: tuple[str, ...]) -> T:
     return cast("T", url.with_query([(name, value) for name, value in url.query.items() if name in keep] or None))
+
+
+def is_ip_address(address: str) -> bool:
+    import ipaddress
+
+    try:
+        ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    else:
+        return True

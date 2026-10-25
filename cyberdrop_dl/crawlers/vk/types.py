@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 
 from cyberdrop_dl.crawlers.vk import full_res_img, try_parse_url
 from cyberdrop_dl.exceptions import ScrapeError
+from cyberdrop_dl.mediaprops import ISO639Subtitle
 from cyberdrop_dl.utils import css, parse_url
 from cyberdrop_dl.utils.dataclass import deserialize
 
@@ -74,6 +75,7 @@ class Video(Owned):
     access_key: str | None = None
     description: str | None = None
     restriction: str | None = None
+    subs: tuple[ISO639Subtitle, ...] = ()
 
     @override
     @classmethod
@@ -86,6 +88,15 @@ class Video(Owned):
         if restriction := video.get("content_restricted_message") or video.get("restriction", {}).get("text"):
             restriction = css.unescape(restriction)
 
+        def subs():
+            for sub in video.get("subtitles") or video.get("subs") or ():
+                if url := sub.get("url"):
+                    yield ISO639Subtitle(
+                        url=url,
+                        name=sub.get("title") or sub.get("manifest_name"),
+                        lang_code=sub.get("lang") or "en",
+                    )
+
         return deserialize(
             cls,
             video,
@@ -93,6 +104,7 @@ class Video(Owned):
             formats=tuple(_extract_formats(video)),
             embed=video.get("files", {}).get("external"),
             restriction=restriction or None,
+            subs=tuple(subs()),
         )
 
     @property
