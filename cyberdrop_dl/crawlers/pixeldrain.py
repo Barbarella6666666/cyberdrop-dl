@@ -27,6 +27,8 @@ class File:
     date_upload: str
     mime_type: str
     hash_sha256: str
+    availability: str
+    availability_message: str = ""
 
 
 @dataclasses.dataclass(slots=True)
@@ -261,10 +263,14 @@ class PixelDrainCrawler(Crawler):
         if "text/plain" in file.mime_type:
             scrape_item.setup_as_album(self.create_title(file.name, file.id))
             text = await self.api.text(src)
-            return self._text(scrape_item, text)
+            self._text(scrape_item, text)
+            return
 
         if await self.check_complete_by_hash(src, "sha256", file.hash_sha256):
-            return None
+            return
+
+        if type(file) is File:
+            _check_file_is_available(file)
 
         filename, ext = self.get_filename_and_ext(file.name, mime_type=file.mime_type)
         scrape_item.uploaded_at = self.parse_iso_date(file.date_upload)
@@ -288,6 +294,13 @@ class PixelDrainCrawler(Crawler):
             scrape_item.add_children()
 
     _file_task = auto_task_id(error_handling_wrapper(_file))
+
+
+def _check_file_is_available(file: File) -> None:
+    if file.availability == "unavailable_for_legal_reasons":
+        raise ScrapeError(451, file.availability_message or file.availability)
+    if file.availability.endswith(("_captcha_required", "_limit_exceeded")):
+        raise ScrapeError(403, file.availability_message or file.availability)
 
 
 class PixelDrainAPI(API):
