@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import dataclasses
 import sqlite3
@@ -75,20 +76,23 @@ async def connect(path: Path, name: str | None = None) -> AsyncGenerator[DBConne
         await db_conn.close()
 
 
+async def unused_space(db_conn: aiosqlite.Connection) -> int:
+    async def execute(query: str) -> int:
+        cursor = await db_conn.execute(query)
+        row = await cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    free_pages, page_size = await asyncio.gather(execute("PRAGMA freelist_count;"), execute("PRAGMA page_size;"))  # noqa: TID251
+    return free_pages * page_size
+
+
 async def pre_allocate_250mb(db_conn: aiosqlite.Connection) -> None:
-    """Pre-allocate 250MB of space to the SQL file just in case the user runs out of disk space."""
+    """Pre-allocate SQL file just in case the user runs out of disk space."""
 
-    cursor = await db_conn.execute("PRAGMA freelist_count;")
-    free_space = await cursor.fetchone()
-    assert free_space is not None
-
-    if free_space[0] > 1024:
+    if await unused_space(db_conn) > 50e6:
         return
 
-    pre_allocate_script = (
-        "CREATE TABLE IF NOT EXISTS t(x);"
-        "INSERT INTO t VALUES(zeroblob(250*1024*1024));"  # 250 MiB
-        "DROP TABLE t;"
-    )
-    _ = await db_conn.executescript(pre_allocate_script)
+    script = "CREATE TABLE IF NOT EXISTS t(x);INSERT INTO t VALUES(zeroblob(250*1024*1024));DROP TABLE t;"
+    await db_conn.executescript(script)
     await db_conn.commit()
