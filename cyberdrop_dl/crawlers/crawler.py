@@ -37,7 +37,7 @@ from cyberdrop_dl.url_objects import AbsoluteHttpURL, MediaItem, MuxVideo, Scrap
 from cyberdrop_dl.utils import css, dates, enter_context, fast_cache, is_blob_or_svg, m3u8, parse_url, unique
 from cyberdrop_dl.utils._url import matches_any_host, remove_trailing_slash
 from cyberdrop_dl.utils.dataclass import ConfigDataclass, DictDataclass, frozen
-from cyberdrop_dl.utils.errors import error_handling_context
+from cyberdrop_dl.utils.errors import OnExceptionCallback, error_handling_context
 
 if TYPE_CHECKING:
     import datetime as dt
@@ -460,14 +460,13 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         return self.config.subfolders.separate_posts.enabled
 
     @final
-    @contextlib.contextmanager
-    def disable_on_error(self, msg: str) -> Generator[None]:
-        try:
-            yield
-        except Exception:
-            self.log.error(f"{msg}. Crawler has been disabled")
-            self.disabled = True
-            raise
+    def disable_on_error(self, msg: str) -> OnExceptionCallback:
+        return OnExceptionCallback(lambda exc: self.disable_and_log(msg, exc))
+
+    @final
+    def disable_and_log(self, msg: str, _exc: BaseException | None = None) -> None:
+        self.log.error(f"{msg}. Crawler has been disabled")
+        self.disabled = True
 
     catch_errors: Final = error_handling_context
 
@@ -493,7 +492,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
             return
 
         if not self.__url_config__.allow_empty_path and url.path == "/":
-            self.raise_exc(scrape_item, ScrapeError.unsupported())
+            await self.raise_exc(scrape_item, ScrapeError.unknown_url())
             return
 
         if check_referer and await self.check_complete_from_referer(url):
@@ -504,9 +503,9 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
                 try:
                     await self.fetch(scrape_item)
                 except ValueError:
-                    self.raise_exc(scrape_item, ScrapeError.unsupported())
+                    await self.raise_exc(scrape_item, ScrapeError.unknown_url())
                 except MaxChildrenError as e:
-                    self.raise_exc(scrape_item, e)
+                    await self.raise_exc(scrape_item, e)
 
     @classmethod
     def transform_url(cls, url: AbsoluteHttpURL) -> AbsoluteHttpURL:
@@ -518,10 +517,8 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
             return url.with_host(new_host)
         return url
 
-    def raise_exc(
-        self, scrape_item: ScrapeItem | AbsoluteHttpURL, exc: type[Exception] | Exception | str | int
-    ) -> None:
-        with self.catch_errors(scrape_item):
+    async def raise_exc(self, item: ScrapeItem | AbsoluteHttpURL, exc: type[Exception] | Exception | str | int) -> None:
+        async with self.catch_errors(item):
             if isinstance(exc, (str, int)):
                 exc = ScrapeError(exc)
             raise exc
@@ -630,7 +627,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         if not (media_item.thumbnail and self.config.filters.files.thumbnails):
             return
 
-        with self.catch_errors(media_item.thumbnail):
+        async with self.catch_errors(media_item.thumbnail):
             ext = await self.sniff_ext(media_item.thumbnail)
             thumb_name = f"{Path(media_item.filename).stem}_thumb{ext}"
             filename, _ = self.get_filename_and_ext(thumb_name)
@@ -966,7 +963,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     ) -> None:
         """Download a direct link file. Filename will be the url slug"""
         url = url or scrape_item.url
-        with self.catch_errors(url):
+        async with self.catch_errors(url):
             filename, ext = self.get_filename_and_ext(url.name or url.parent.name, assume_ext=assume_ext)
             await self.handle_file(url, scrape_item, filename, ext)
 
@@ -982,7 +979,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
 
     @final
     async def follow_redirect(self, scrape_item: ScrapeItem) -> None:
-        with self.catch_errors(scrape_item):
+        async with self.catch_errors(scrape_item):
             redirect = await self.request_redirect(scrape_item.url)
             if scrape_item.url == redirect:
                 raise ScrapeError(422, "Infinite redirect")
@@ -1099,7 +1096,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         sub: ResolvedISO639Subtitle,
         track_id: int = 1,
     ) -> None:
-        with self.catch_errors(sub.url):
+        async with self.catch_errors(sub.url):
             ext = sub.ext or await self.sniff_ext(sub.url)
             track_suffix = f".{track_id}" if track_id > 1 else ""
             filename = f"{video_stem}.{sub.lang_code}{track_suffix}{ext}"
@@ -1115,7 +1112,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     async def generic_m3u8(self, scrape_item: ScrapeItem, url: AbsoluteHttpURL | None = None) -> None:
         url = url or scrape_item.url
         referer = scrape_item.get_referer()
-        with self.catch_errors(url):
+        async with self.catch_errors(url):
             if referer and await self.check_complete_from_referer(referer):
                 return
 
