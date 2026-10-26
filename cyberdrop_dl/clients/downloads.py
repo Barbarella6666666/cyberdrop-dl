@@ -515,7 +515,6 @@ def resolve_download_dir(download_folder: Path, config: Config) -> Path:
     if config.subfolders.create or USE_RETRY_PATH.get():
         return download_folder
 
-    while download_folder.parent != config.download_folder:
-        download_folder = download_folder.parent
-
-    return download_folder
+    # Only keep the fist subfolder (if any)
+    subfolders = download_folder.relative_to(config.download_folder).parts
+    return config.download_folder.joinpath(*subfolders[:1])
