@@ -60,7 +60,7 @@ class SubFolders(ConfigGroup, name=None):
     "Enable/disable the creation of nested sub-folders"
 
     group_loose_files: bool = True
-    "Create a subfolder named 'Loose Files (<DOMAIN>)' for individual files not part of any album/thread"
+    "Create a subfolder named 'Loose Files' for individual files not part of any album/thread"
 
     include: _SubFoldersInclude = Field(default_factory=_SubFoldersInclude)
     separate_posts: _SeparatePosts = Field(default_factory=_SeparatePosts)

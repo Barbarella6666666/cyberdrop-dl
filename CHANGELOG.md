@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Handle posts with no audio (TikTok)
 - Do not stop entire profile scrape when a single post fails (TikTok)
 - Respect `--rate-limit` values higher than 25req/s
+- Respect `--subfolders.include.domain` for `Loose Files` folders
 
 ### Security
 

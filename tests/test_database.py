@@ -108,6 +108,13 @@ class TestGetDownloadPath:
         with enter_context(USE_RETRY_PATH, True):
             assert self.dl_path(item) == retry.download_path
 
+    def test_loose_files_no_include_domain(self, item: ScrapeItem) -> None:
+        item.append_folders("a/sub/folder")
+        config = Config()
+        config.subfolders.include.domain = False
+        path = _prepare_download_path(item, "cyberdrop", config)
+        assert path == Path("downloads/a-sub-folder/Loose Files")
+
 
 async def test_database_creation(tmp_cwd: Path) -> None:
     db_file = tmp_cwd / "test_db.db"

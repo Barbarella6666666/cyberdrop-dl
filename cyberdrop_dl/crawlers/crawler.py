@@ -1330,11 +1330,16 @@ def _should_skip_by_config(media_item: MediaItem, config: Config) -> bool:
 def _prepare_download_path(item: ScrapeItem, domain: str, config: Config) -> Path:
     if item.retry_info and USE_RETRY_PATH.get():
         return item.retry_info.download_path
+
     path = item.download_folder / item.path
-    if item.is_loose_file and config.subfolders.create and config.subfolders.group_loose_files:
-        loose_files = f"Loose Files ({domain})" if domain else "Loose Files"
-        path = path / loose_files
-    return path
+    if not (item.is_loose_file and config.subfolders.create and config.subfolders.group_loose_files):
+        return path
+
+    loose_files = "Loose Files"
+    if config.subfolders.include.domain and domain:
+        loose_files += f" ({domain})"
+
+    return path / loose_files
 
 
 def compose_title(  # noqa: PLR0913

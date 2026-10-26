@@ -23,8 +23,8 @@ subfolders:
 | ------ | ------- |
 | `bool` | `true`  |
 
-Download individual files not part of any album/thread into a subfolder named `Loose Files (<DOMAIN>)`. Direct HTTP files from unsupported sites
-will be downloaded to `Loose Files` (no domain in folder name).
+Download individual files not part of any album/thread into a subfolder named `Loose Files (<DOMAIN>)`
+(or just `Loose Files` for Direct HTTP files from unsupported sites or when `--subfolders.include.domain` is disabled).
 
 This option is ignored unless `--subfolder.create` is enabled
 
