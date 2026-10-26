@@ -270,14 +270,15 @@ class ChannelEndpoint(API.Endpoint[KickAPI]):
 class Clip:
     id: str
     title: str
-    thumbnail_url: AbsoluteHttpURL
     created_at: str
     playback_url: AbsoluteHttpURL
     channel: User
+    thumbnail_url: AbsoluteHttpURL | None = None
 
     @classmethod
     def parse(cls, clip: dict[str, Any]) -> Self:
         clip["playback_url"] = clip.get("clip_url") or clip.get("video_url") or clip["playback_url"]
+        clip["thumbnail_url"] = clip.get("thumbnail_url") or None
         return type_adapter(cls).validate_python(clip)
 
 
@@ -287,12 +288,15 @@ class VODMetadata:
     title: str
     start_time: str
     status: str
-    thumbnail_url: AbsoluteHttpURL
     channel: User
+    thumbnail_url: AbsoluteHttpURL | None = None
 
     @classmethod
     def parse(cls, vod: dict[str, Any]) -> Self:
-        vod["thumbnail_url"] = css.best_from_srcset(vod["thumbnail"]["srcSet"])
+        thumb = None
+        if thumbs := vod.get("thumbnail"):
+            thumb = css.best_from_srcset(src_set) if (src_set := thumbs.get("srcSet")) else thumbs.get("src") or None
+        vod["thumbnail_url"] = thumb
         return type_adapter(cls).validate_python(vod)
 
 
