@@ -538,6 +538,7 @@ class HTTPConfig(ConfigDataclass):
     impersonate: str | bool | None = None
     rate_limit: RateLimit | None = None
     json_check: JSONCheck | None = None
+    probe_method: HttpMethod | None = None
 
     @classmethod
     def default_headers(
@@ -579,6 +580,7 @@ class HTTPContext:
     json_check: JSONCheck | None = None
     impersonate: str | bool | None = None
     throttle: Callable[[], Awaitable[Any]] | None = None
+    probe_method: HttpMethod = "HEAD"
     headers: dict[str, str] = dataclasses.field(default_factory=dict)
 
     @classmethod
@@ -597,6 +599,7 @@ class HTTPContext:
             impersonate=config.impersonate,
             json_check=config.json_check,
             throttle=throttle,
+            probe_method=config.probe_method or "HEAD",
         )
 
 

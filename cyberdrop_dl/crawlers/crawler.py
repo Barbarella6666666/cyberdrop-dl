@@ -10,7 +10,7 @@ from collections import Counter
 from contextvars import ContextVar
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, Final, Literal, Self, final
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, Final, Literal, Self, Unpack, final
 
 from aiohttp import hdrs
 
@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     import yarl
     from bs4 import BeautifulSoup, Tag
 
+    from cyberdrop_dl.clients.request import RequestParams
     from cyberdrop_dl.clients.response import AbstractResponse
     from cyberdrop_dl.config import Config
     from cyberdrop_dl.database import Database
@@ -199,7 +200,7 @@ class DownloadConfig(ConfigDataclass):
 
 
 @URLConfig(trim=True, allow_empty_path=False, ignore_fragment=True)
-@HTTPConfig(rate_limit=(MAX_RATE_LIMIT, 1))
+@HTTPConfig(rate_limit=(MAX_RATE_LIMIT, 1), probe_method="HEAD")
 @DownloadConfig(slots=None, server_lock=False)
 class Crawler(HTTPMixin, HLSMixin, ABC):
     __dl_config__: ClassVar[DownloadConfig]
@@ -216,7 +217,6 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     FOLDER_DOMAIN: ClassVar[str] = ""
     PRIMARY_URL: ClassVar[AbsoluteHttpURL]
     _FORUM: ClassVar[bool] = False
-    _THUMB_HTTP_METHOD: ClassVar[HttpMethod] = "HEAD"
 
     disabled: bool = False
 
@@ -424,8 +424,6 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
     def create_eager_task(self, coro: Coroutine[Any, Any, Any]) -> None:
         """Run this coro as soon as possible"""
         _ = self._task_mngr.scrape.create_eager_task(coro)
-
-    new_task_group: Final = staticmethod(aio.non_cancelling_taskgroup)
 
     @abstractmethod
     async def fetch(self, scrape_item: ScrapeItem) -> None:
@@ -640,12 +638,14 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
                 frag="thumbnail",
             )
 
-    async def sniff_ext(self, thumbnail: AbsoluteHttpURL, headers: dict[str, str] | None = None) -> str:
+    async def sniff_ext(
+        self, url: AbsoluteHttpURL, /, method: HttpMethod | None = None, **kwargs: Unpack[RequestParams]
+    ) -> str:
         try:
-            return self.get_filename_and_ext(thumbnail.name).suffix
+            return self.get_filename_and_ext(url.name).suffix
         except NoExtensionError:
-            async with self.request(thumbnail, self._THUMB_HTTP_METHOD, headers=headers or {}) as resp:
-                name = thumbnail.name or thumbnail.parent.name or "file"
+            async with self.request(url, method or self.__http_ctx__.probe_method, **kwargs) as resp:
+                name = url.name or url.parent.name or "file"
                 return self.get_filename_and_ext(name, mime_type=resp.content_type).suffix
 
     def _prepare_headers(self, scrape_item: ScrapeItem) -> dict[str, str]:

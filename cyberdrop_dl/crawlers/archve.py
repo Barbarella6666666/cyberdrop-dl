@@ -5,9 +5,10 @@ import base64
 import dataclasses
 import hashlib
 import time
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from cyberdrop_dl import aio
+from cyberdrop_dl.clients.http import HTTPConfig
 from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths, auto_task_id
 from cyberdrop_dl.exceptions import NoExtensionError, ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL, ScrapeItem
@@ -15,10 +16,8 @@ from cyberdrop_dl.utils import b64_pad, css, extr_text
 from cyberdrop_dl.utils.crypto import aes_cbc_decrypt, aes_unpad
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
-if TYPE_CHECKING:
-    from cyberdrop_dl.constants import HttpMethod
 
-
+@HTTPConfig(probe_method="GET")
 class ArchveCrawler(Crawler):
     SUPPORTED_PATHS: ClassVar[SupportedPaths] = {
         "Video": (
@@ -33,7 +32,6 @@ class ArchveCrawler(Crawler):
     PRIMARY_URL: ClassVar[AbsoluteHttpURL] = AbsoluteHttpURL("https://archve.xyz")
     DOMAIN: ClassVar[str] = "archve"
     NEXT_PAGE_SELECTOR: ClassVar[str] = ".profile-pager a.btn:-soup-contains-own(Next)"
-    _THUMB_HTTP_METHOD: ClassVar[HttpMethod] = "GET"
 
     def __post_init__(self) -> None:
         self.api: ArchveAPI = ArchveAPI.from_crawler(self)

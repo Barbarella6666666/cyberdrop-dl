@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections import deque
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Unpack, override
 
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
@@ -23,6 +23,8 @@ from cyberdrop_dl.utils.errors import error_handling_wrapper
 from cyberdrop_dl.utils.m3u8 import M3U8, Rendition
 
 if TYPE_CHECKING:
+    from cyberdrop_dl.clients.request import RequestParams
+    from cyberdrop_dl.constants import HttpMethod
     from cyberdrop_dl.url_objects import ScrapeItem
 
 _PT = ContextVar[str]("_PT")
@@ -167,10 +169,12 @@ class UpFileCrawler(Crawler):
         media_item.headers.update(self.api.headers)
 
     @override
-    async def sniff_ext(self, thumbnail: AbsoluteHttpURL, headers: dict[str, str] | None = None) -> str:
-        if thumbnail.name == "thumb":
+    async def sniff_ext(
+        self, url: AbsoluteHttpURL, /, method: HttpMethod | None = None, **kwargs: Unpack[RequestParams]
+    ) -> str:
+        if url.name == "thumb":
             return ".jpg"
-        return await super().sniff_ext(thumbnail, headers)
+        return await super().sniff_ext(url, method, **kwargs)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
