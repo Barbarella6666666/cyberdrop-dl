@@ -35,7 +35,14 @@ from cyberdrop_dl.mediaprops import Codecs, ISO639Subtitle, Resolution, Resolved
 from cyberdrop_dl.models.validators import strings
 from cyberdrop_dl.url_objects import AbsoluteHttpURL, MediaItem, MuxVideo, ScrapeItem, is_absolute_http_url
 from cyberdrop_dl.utils import css, dates, enter_context, fast_cache, is_blob_or_svg, m3u8, parse_url, unique
-from cyberdrop_dl.utils._url import matches_any_host, remove_trailing_slash
+from cyberdrop_dl.utils._url import (
+    URLDeduper,
+    matches_any_host,
+    path_frag,
+    path_qs,
+    path_qs_frag,
+    remove_trailing_slash,
+)
 from cyberdrop_dl.utils.dataclass import ConfigDataclass, DictDataclass, frozen
 from cyberdrop_dl.utils.errors import OnExceptionCallback, error_handling_context
 
@@ -92,18 +99,14 @@ _include = _PlaceHolderConfigInclude()
 type URLHasher = Callable[[AbsoluteHttpURL], str]
 
 
-def _path_qs_frag(url: AbsoluteHttpURL) -> str:
-    return f"{url.path_qs}#{frag}" if (frag := url.fragment) else url.path_qs
-
-
 _DB_PATH_BUILDERS: MappingProxyType[str, URLHasher] = MappingProxyType(
     {
         "url": str,
         "name": lambda url: url.name,
         "path": lambda url: url.path,
-        "path_qs": lambda url: url.path_qs,
-        "path_qs_frag": _path_qs_frag,
-        "path_frag": lambda url: f"{url.path}#{frag}" if (frag := url.fragment) else url.path,
+        "path_qs": path_qs,
+        "path_qs_frag": path_qs_frag,
+        "path_frag": path_frag,
     }
 )
 
@@ -263,7 +266,7 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
         self._startup_lock: asyncio.Lock = asyncio.Lock()
         self._ready: bool = False
         self._logged_in: bool = False
-        self.scraped_items: set[str] = set()
+        self.scraped_urls: URLDeduper = URLDeduper(path_qs if self.__url_config__.ignore_fragment else path_qs_frag)
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(40)
         self.config: Config = manager.config
         self.client: HTTPClient = manager.http_client
@@ -470,12 +473,9 @@ class Crawler(HTTPMixin, HLSMixin, ABC):
 
     @final
     def was_scrapped_before(self, url: AbsoluteHttpURL) -> bool:
-        lookup = url.path_qs if self.__url_config__.ignore_fragment else _path_qs_frag(url)
-        if lookup in self.scraped_items:
+        if url in self.scraped_urls:
             logger.info("Skipping %s as it has already been scrapped", url)
             return True
-
-        self.scraped_items.add(lookup)
         return False
 
     @final

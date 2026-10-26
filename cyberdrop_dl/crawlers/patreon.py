@@ -13,6 +13,7 @@ from cyberdrop_dl.crawlers.crawler import API, Crawler, SupportedPaths, auto_tas
 from cyberdrop_dl.exceptions import MaxChildrenError, NoExtensionError, ScrapeError
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import css, extr_text, next_js, traversal
+from cyberdrop_dl.utils._url import URLDeduper
 from cyberdrop_dl.utils.dataclass import DictDataclass
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
@@ -130,7 +131,7 @@ class PatreonCrawler(Crawler):
         return medias
 
     async def _post_media(self, scrape_item: ScrapeItem, post: Post, medias: tuple[Media, ...]) -> None:  # noqa: C901
-        seen_urls: set[AbsoluteHttpURL] = set()
+        seen_urls: URLDeduper = URLDeduper()
         seen_media_ids: set[str] = set()
         seen_media_hashes: set[str] = set()
 
@@ -147,7 +148,6 @@ class PatreonCrawler(Crawler):
                 return
 
             new_item = scrape_item.create_child(url)
-            seen_urls.add(url)
             self.handle_external_links(new_item, reset=not embed)
             scrape_item.add_children()
             await sleep()

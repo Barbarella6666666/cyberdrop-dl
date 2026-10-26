@@ -15,6 +15,7 @@ from cyberdrop_dl.exceptions import ScrapeError
 from cyberdrop_dl.mediaprops import Resolution
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import extr_text, parse_url, traversal, xor_decrypt
+from cyberdrop_dl.utils._url import URLDeduper
 from cyberdrop_dl.utils.errors import error_handling_wrapper
 
 if TYPE_CHECKING:
@@ -325,7 +326,7 @@ def _parse_xplayer_sources(xplayer_sources: dict[str, Any]) -> Iterable[Format]:
     if not xplayer_sources:
         return
 
-    seen_urls: set[AbsoluteHttpURL] = set()
+    seen_urls: URLDeduper = URLDeduper()
 
     def parse_format(format_dict: dict[str, str], codec: str) -> Generator[Format]:
         for key in ("url",):
@@ -341,7 +342,6 @@ def _parse_xplayer_sources(xplayer_sources: dict[str, Any]) -> Iterable[Format]:
             if url in seen_urls:
                 continue
 
-            seen_urls.add(url)
             res = Resolution.parse(quality)
             if res == Resolution.unknown() and (multi := next((p for p in url.parts if p.startswith("multi=")), None)):
                 best = next(reversed(multi.split(",")))
