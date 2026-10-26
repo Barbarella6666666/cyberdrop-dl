@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 import aiosqlite
 
-from cyberdrop_dl.signature import simple_repr
+from cyberdrop_dl.signature import dataclass_repr
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from cyberdrop_dl.database._db import Database
 
 
+@dataclass_repr("name", "_thread")
 class DBConnection(aiosqlite.Connection):
     def __init__(
         self, connector: Callable[[], sqlite3.Connection], iter_chunk_size: int = 64, *, name: str | None = None
@@ -30,8 +31,6 @@ class DBConnection(aiosqlite.Connection):
     @property
     def name(self) -> str | None:
         return self._name
-
-    __repr__ = simple_repr("name", "_thread")
 
 
 @dataclasses.dataclass(slots=True)

@@ -5,7 +5,7 @@ from collections.abc import Callable, Generator, Mapping
 from typing import Any, TypeGuard, overload
 
 from cyberdrop_dl.exceptions import ScrapeError
-from cyberdrop_dl.signature import simple_repr
+from cyberdrop_dl.signature import dataclass_repr
 
 type Path = tuple[str | int, ...]
 type Validator = Callable[[object], bool]
@@ -60,13 +60,12 @@ def cast_validator(obj: object) -> Validator:
     return lambda x: x == obj
 
 
+@dataclass_repr("target_keys", "validators")
 class DictVisitor:
     def __init__(self, keys: tuple[str, ...], validate: Mapping[str, Any] | None = None) -> None:
         validate = validate or {}
         self.target_keys: set[str] = set(validate).union(keys)
         self.validators: dict[str, Validator] = {key: cast_validator(value) for key, value in validate.items()}
-
-    __repr__ = simple_repr("target_keys", "validators")
 
     def __call__(self, path: Path, obj: object) -> TypeGuard[dict[str, Any]]:  # noqa: ARG002
         if not (isinstance(obj, dict) and self.target_keys.issubset(obj)):

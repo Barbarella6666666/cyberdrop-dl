@@ -18,7 +18,7 @@ from cyberdrop_dl.clients.request import Request, RequestParams
 from cyberdrop_dl.clients.response import AbstractResponse, FlareSolverrResponse
 from cyberdrop_dl.cookies import make_simple_cookie
 from cyberdrop_dl.exceptions import DDOSGuardError, DownloadError, ScrapeError
-from cyberdrop_dl.signature import simple_repr
+from cyberdrop_dl.signature import dataclass_repr
 from cyberdrop_dl.utils import enter_context, truncated_preview
 from cyberdrop_dl.utils.dataclass import ConfigDataclass, frozen
 
@@ -87,6 +87,9 @@ class HTTPLimiter:
 
 
 @final
+@dataclass_repr(
+    "config", "_ssl_context", "_cookies", "_flaresolverr", "limiter", "request_done_callback", "_use_flaresolverr_ua"
+)
 class HTTPClient:
     request_done_callback: RequestDoneCallback | None = None
 
@@ -106,16 +109,6 @@ class HTTPClient:
         self._wreq_session: WreqClient | None = None
         self._session: aiohttp.ClientSession
         self._download_session: aiohttp.ClientSession
-
-    __repr__ = simple_repr(
-        "config",
-        "_ssl_context",
-        "_cookies",
-        "_flaresolverr",
-        "limiter",
-        "request_done_callback",
-        "_use_flaresolverr_ua",
-    )
 
     @property
     def ssl_context(self):

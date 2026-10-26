@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple, Self
 
 from cyberdrop_dl.constants import FileExt
 from cyberdrop_dl.exceptions import FileNameError, InvalidExtensionError, NoExtensionError, PathTraversalError
-from cyberdrop_dl.signature import simple_repr
+from cyberdrop_dl.signature import dataclass_repr
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,12 +53,11 @@ class Filename(NamedTuple):
         return self.name.removesuffix(self.suffix)
 
 
+@dataclass_repr("banned_chars", "post_process")
 class PathSanitizer:
     def __init__(self, banned_chars: str | None = None, *post_process: Callable[[str], str]) -> None:
         self.banned_chars: str | None = banned_chars
         self.post_process: tuple[Callable[[str], str], ...] = post_process
-
-    __repr__ = simple_repr("banned_chars", "post_process")
 
     def __call__(self, name: str, repl: str = "") -> str:
         if self.banned_chars:

@@ -17,7 +17,7 @@ from cyberdrop_dl import ddos_guard
 from cyberdrop_dl.clients import HttpMethod, get_logger
 from cyberdrop_dl.exceptions import CloudflareBlockedError, DDOSGuardError, FlaresolverrError
 from cyberdrop_dl.progress.scraping import show_msg
-from cyberdrop_dl.signature import simple_repr
+from cyberdrop_dl.signature import dataclass_repr
 from cyberdrop_dl.url_objects import AbsoluteHttpURL
 from cyberdrop_dl.utils import truncated_preview
 
@@ -136,6 +136,7 @@ class Request:
         return cls(command, payload, {})
 
 
+@dataclass_repr("resp")
 class _LazyResponseLog:
     def __init__(self, resp: dict[str, Any]) -> None:
         self.resp: dict[str, Any] = resp
@@ -154,8 +155,6 @@ class _LazyResponseLog:
     def __str__(self) -> str:
         return str(self.__json__())
 
-    __repr__ = simple_repr("resp")
-
 
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class Config:
@@ -166,15 +165,15 @@ class Config:
     use_session: bool = True
 
 
+@dataclass_repr("session_lock", "session_timeout", "sem")
 class Limiter:
     def __init__(self, concurrency: int) -> None:
         self.session_lock: asyncio.Lock = asyncio.Lock()
         self.session_timeout: aiohttp.ClientTimeout = aiohttp.ClientTimeout(sock_read=5 * 60, sock_connect=60)
         self.sem: asyncio.BoundedSemaphore = asyncio.BoundedSemaphore(concurrency)
 
-    __repr__ = simple_repr("session_lock", "session_timeout", "sem")
 
-
+@dataclass_repr("config", "session", "limiter", "is_down")
 class Client:
     """Class that handles communication with Flaresolverr."""
 
@@ -188,8 +187,6 @@ class Client:
         self.request_id: Callable[[], int] = itertools.count(1).__next__
         self.is_down: bool = False
         self._invalid_responses: int = 0
-
-    __repr__ = simple_repr("config", "session", "limiter", "is_down")
 
     async def aclose(self) -> None:
         if not self.session:
